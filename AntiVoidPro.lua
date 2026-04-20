@@ -9,9 +9,21 @@ workspace.FallenPartsDestroyHeight = 0/0
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "IMMORTAL MODE",
-        Text = "Void real activado",
+        Text = "Protección total activada",
         Duration = 3
     })
+end)
+
+-- 🔥 ANTI COLISIÓN CON JUGADORES
+RunService.Heartbeat:Connect(function()
+    for _, CoPlayer in pairs(Players:GetPlayers()) do
+        if CoPlayer ~= Player and CoPlayer.Character then
+            local HRP = CoPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if HRP then
+                HRP.CanCollide = false
+            end
+        end
+    end
 end)
 
 local function VoidDrop(char)
@@ -19,22 +31,16 @@ local function VoidDrop(char)
 
     local original = Root.CFrame
 
-    -- 🔻 Forzar bajada REAL al vacío (evita que el juego te suba)
+    -- Forzar bajada real
     for i = 1, 20 do
         Root.CFrame = original - Vector3.new(0, 500, 0)
         task.wait(0.02)
     end
 
-    -- 🔒 Anclar para que no te saque del vacío
     Root.Anchored = true
-
-    -- ⏱️ Tiempo real en vacío
     task.wait(5)
-
-    -- 🔓 Desanclar
     Root.Anchored = false
 
-    -- 🔺 Volver arriba
     Root.CFrame = original + Vector3.new(0, 5, 0)
 end
 
@@ -42,7 +48,7 @@ local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔥 Activar void al spawn inmediato
+    -- Activar vacío
     task.spawn(function()
         task.wait(0.2)
         pcall(function()
@@ -50,10 +56,8 @@ local function ProtectCharacter(char)
         end)
     end)
 
-    -- 🔹 Guardar vida
+    -- Anti daño
     local lastHealth = Humanoid.Health
-
-    -- 🔹 Anti daño
     Humanoid.HealthChanged:Connect(function(h)
         if h < lastHealth then
             Humanoid.Health = Humanoid.MaxHealth
@@ -61,7 +65,7 @@ local function ProtectCharacter(char)
         lastHealth = Humanoid.Health
     end)
 
-    -- 🔹 Anti estados
+    -- Anti estados
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStand, false)
@@ -73,7 +77,7 @@ local function ProtectCharacter(char)
         end
     end)
 
-    -- 🔹 Anti caída + fuerzas
+    -- Anti caída + fuerzas
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
 
@@ -97,7 +101,7 @@ local function ProtectCharacter(char)
     end)
 end
 
--- 🔹 Persistente
+-- Persistente
 if Player.Character then
     task.spawn(function()
         ProtectCharacter(Player.Character)
@@ -108,7 +112,7 @@ Player.CharacterAdded:Connect(function(char)
     ProtectCharacter(char)
 end)
 
--- 🔹 Anti kick
+-- Anti kick
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
 local oldNamecall = mt.__namecall
