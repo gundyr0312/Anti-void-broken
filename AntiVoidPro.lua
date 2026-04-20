@@ -33,7 +33,7 @@ local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔥 TU BLOQUE (MEJORADO)
+    -- 🔥 Anti caída básica (tu método)
     local FallDamageScript = char:FindFirstChild("FallDamageScript")
     if FallDamageScript then
         FallDamageScript:Destroy()
@@ -43,7 +43,7 @@ local function ProtectCharacter(char)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStand, false)
 
-    -- 🔹 Anti muerte directa
+    -- 🔹 Anti muerte
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 
     Humanoid.StateChanged:Connect(function(_, state)
@@ -55,11 +55,24 @@ local function ProtectCharacter(char)
     -- 🔹 Regeneración
     ConstantRegen(Humanoid)
 
-    -- 🔹 Anti fuerzas externas (meteoritos, explosiones, empujes)
+    -- 🔥 REBOTE ANTI-CAÍDA
+    RunService.Heartbeat:Connect(function()
+        if not char or not char.Parent then return end
+
+        local state = Humanoid:GetState()
+
+        if state == Enum.HumanoidStateType.Freefall then
+            if Root.Velocity.Y < -60 then
+                -- Rebote hacia arriba (ajusta 80 para más o menos fuerza)
+                Root.Velocity = Vector3.new(Root.Velocity.X, 80, Root.Velocity.Z)
+            end
+        end
+    end)
+
+    -- 🔹 Anti fuerzas externas
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
         if Root then
-            Root.Velocity = Vector3.new(0,0,0)
             Root.RotVelocity = Vector3.new(0,0,0)
 
             for _, v in pairs(Root:GetChildren()) do
