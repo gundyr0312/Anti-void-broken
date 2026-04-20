@@ -17,16 +17,15 @@ end)
 local function VoidDrop(char)
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- Guardar posición
     local original = Root.CFrame
 
-    -- Caer al vacío
+    -- 🔻 Caer al vacío
     Root.CFrame = Root.CFrame - Vector3.new(0, 300, 0)
 
-    -- Tiempo en el vacío (ajustable)
-    task.wait(0.4)
+    -- ⏱️ 5 SEGUNDOS EN EL VACÍO
+    task.wait(5)
 
-    -- Volver arriba
+    -- 🔺 Volver arriba
     Root.CFrame = original + Vector3.new(0, 5, 0)
 end
 
@@ -45,7 +44,7 @@ local function ProtectCharacter(char)
     -- 🔹 Guardar vida anterior
     local lastHealth = Humanoid.Health
 
-    -- 🔥 DETECTOR DE DAÑO (cura instantánea)
+    -- 🔥 DETECTOR DE DAÑO
     Humanoid.HealthChanged:Connect(function(h)
         if h < lastHealth then
             Humanoid.Health = Humanoid.MaxHealth
@@ -65,7 +64,7 @@ local function ProtectCharacter(char)
         end
     end)
 
-    -- 🔥 ANTI CAÍDA REAL (3 en 1)
+    -- 🔥 ANTI CAÍDA + ANTI FUERZAS
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
 
