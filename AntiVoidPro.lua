@@ -4,12 +4,14 @@ local StarterGui = game:GetService("StarterGui")
 
 local Player = Players.LocalPlayer
 
+-- 🔹 Anti-void permanente
 workspace.FallenPartsDestroyHeight = 0/0
 
+-- 🔹 Notificación
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "IMMORTAL MODE",
-        Text = "Sistema activado",
+        Text = "Ghost + Protección activada",
         Duration = 3
     })
 end)
@@ -18,16 +20,14 @@ local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔹 Guardar vida anterior
-    local lastHealth = Humanoid.Health
-
-    -- 🔥 DETECTOR DE DAÑO (cura instantánea)
-    Humanoid.HealthChanged:Connect(function(h)
-        if h < lastHealth then
-            -- Si recibió daño → lo curamos al instante
-            Humanoid.Health = Humanoid.MaxHealth
+    -- 🔹 VIDA SIEMPRE AL MÁXIMO (sin bug visual)
+    task.spawn(function()
+        while Humanoid and Humanoid.Parent do
+            if Humanoid.Health > 0 then
+                Humanoid.Health = Humanoid.MaxHealth
+            end
+            task.wait(0.2)
         end
-        lastHealth = Humanoid.Health
     end)
 
     -- 🔹 Anti estados
@@ -42,25 +42,42 @@ local function ProtectCharacter(char)
         end
     end)
 
-    -- 🔥 ANTI CAÍDA REAL (3 en 1)
+    -- 🔥 GHOST MODE (CLAVE)
+    local function NoClip()
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    RunService.Stepped:Connect(function()
+        if not char or not char.Parent then return end
+        NoClip()
+    end)
+
+    -- 🔥 ANTI FLING REAL
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
 
         local vel = Root.Velocity
 
-        -- 1. Limitar velocidad de caída (CLAVE)
-        if vel.Y < -40 then
-            Root.Velocity = Vector3.new(vel.X, -10, vel.Z)
+        -- Cancelar velocidades raras
+        if vel.Magnitude > 50 then
+            Root.Velocity = Vector3.new(0,0,0)
         end
 
-        -- 2. Rebote suave
-        if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and vel.Y < -35 then
-            Root.Velocity = Vector3.new(vel.X, 60, vel.Z)
-        end
+        -- Limitar movimiento
+        Root.Velocity = Vector3.new(
+            math.clamp(vel.X, -25, 25),
+            math.clamp(vel.Y, -30, 30),
+            math.clamp(vel.Z, -25, 25)
+        )
 
-        -- 3. Anti fuerzas externas
+        -- Quitar rotación
         Root.RotVelocity = Vector3.new(0,0,0)
 
+        -- Eliminar fuerzas externas
         for _, v in pairs(Root:GetChildren()) do
             if v:IsA("BodyVelocity") 
             or v:IsA("BodyForce") 
@@ -71,9 +88,24 @@ local function ProtectCharacter(char)
             end
         end
     end)
+
+    -- 🔥 ANTI CAÍDA TOTAL
+    RunService.Heartbeat:Connect(function()
+        if not char or not char.Parent then return end
+
+        local vel = Root.Velocity
+
+        if vel.Y < -40 then
+            Root.Velocity = Vector3.new(vel.X, -10, vel.Z)
+        end
+
+        if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and vel.Y < -35 then
+            Root.Velocity = Vector3.new(vel.X, 60, vel.Z)
+        end
+    end)
 end
 
--- 🔹 Persistente
+-- 🔹 Persistente tras morir
 if Player.Character then
     task.spawn(function()
         ProtectCharacter(Player.Character)
