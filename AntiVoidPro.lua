@@ -3,25 +3,47 @@ local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 
 local Player = Players.LocalPlayer
-local OriginalFallHeight = workspace.FallenPartsDestroyHeight
 
--- 🔹 Anti-void global permanente
+-- 🔹 Anti-void permanente
 workspace.FallenPartsDestroyHeight = 0/0
 
--- 🔹 Notificación (3 segundos)
+-- 🔹 Notificación
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "IMMORTAL MODE",
-        Text = "Protección activada",
+        Text = "Sistema activado",
         Duration = 3
     })
 end)
 
+-- 🔹 Regeneración constante
+local function ConstantRegen(Humanoid)
+    task.spawn(function()
+        while Humanoid and Humanoid.Parent do
+            if Humanoid.Health > 0 and Humanoid.Health < Humanoid.MaxHealth then
+                Humanoid.Health = math.min(Humanoid.Health + 2, Humanoid.MaxHealth)
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+
+-- 🔹 Protección completa
 local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔹 Anti muerte
+    -- 🔥 TU BLOQUE (MEJORADO)
+    local FallDamageScript = char:FindFirstChild("FallDamageScript")
+    if FallDamageScript then
+        FallDamageScript:Destroy()
+    end
+
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStand, false)
+
+    -- 🔹 Anti muerte directa
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 
     Humanoid.StateChanged:Connect(function(_, state)
@@ -30,24 +52,8 @@ local function ProtectCharacter(char)
         end
     end)
 
-    -- 🔹 Anti ragdoll y estados molestos
-    local blockedStates = {
-        Enum.HumanoidStateType.Ragdoll,
-        Enum.HumanoidStateType.FallingDown,
-        Enum.HumanoidStateType.PlatformStand,
-        Enum.HumanoidStateType.Seated
-    }
-
-    for _, state in pairs(blockedStates) do
-        Humanoid:SetStateEnabled(state, false)
-    end
-
-    -- 🔹 Auto curación constante
-    Humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-        if Humanoid.Health < Humanoid.MaxHealth then
-            Humanoid.Health = Humanoid.MaxHealth
-        end
-    end)
+    -- 🔹 Regeneración
+    ConstantRegen(Humanoid)
 
     -- 🔹 Anti fuerzas externas (meteoritos, explosiones, empujes)
     RunService.Heartbeat:Connect(function()
@@ -67,13 +73,9 @@ local function ProtectCharacter(char)
             end
         end
     end)
-
-    -- 🔹 Anti caída
-    Humanoid.UseJumpPower = true
-    Humanoid.JumpPower = 50
 end
 
--- 🔹 Aplicar siempre (aunque mueras)
+-- 🔹 Persistencia tras morir
 if Player.Character then
     task.spawn(function()
         ProtectCharacter(Player.Character)
@@ -81,7 +83,7 @@ if Player.Character then
 end
 
 Player.CharacterAdded:Connect(function(char)
-    task.wait(0.5) -- evita bugs de carga
+    task.wait(0.5)
     ProtectCharacter(char)
 end)
 
