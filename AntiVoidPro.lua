@@ -8,51 +8,76 @@ workspace.FallenPartsDestroyHeight = 0/0
 
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "VOID MODE",
-        Text = "Vida negativa activada",
+        Title = "IMMORTAL MODE",
+        Text = "Sistema activado",
         Duration = 3
     })
 end)
+
+local function VoidDrop(char)
+    local Root = char:WaitForChild("HumanoidRootPart")
+
+    -- Guardar posición
+    local original = Root.CFrame
+
+    -- Caer al vacío
+    Root.CFrame = Root.CFrame - Vector3.new(0, 300, 0)
+
+    -- Tiempo en el vacío (ajustable)
+    task.wait(0.4)
+
+    -- Volver arriba
+    Root.CFrame = original + Vector3.new(0, 5, 0)
+end
 
 local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔥 VIDA NEGATIVA (SIN MORIR)
+    -- 🔥 ACTIVAR VOID AL SPAWN
     task.spawn(function()
-        task.wait(0.3)
-
-        if Humanoid then
-            Humanoid.Health = -1
-            Humanoid:ChangeState(Enum.HumanoidStateType.Running)
-        end
+        task.wait(0.6)
+        pcall(function()
+            VoidDrop(char)
+        end)
     end)
 
-    -- 🔹 Evitar muerte real
+    -- 🔹 Guardar vida anterior
+    local lastHealth = Humanoid.Health
+
+    -- 🔥 DETECTOR DE DAÑO (cura instantánea)
+    Humanoid.HealthChanged:Connect(function(h)
+        if h < lastHealth then
+            Humanoid.Health = Humanoid.MaxHealth
+        end
+        lastHealth = Humanoid.Health
+    end)
+
+    -- 🔹 Anti estados
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStand, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 
     Humanoid.StateChanged:Connect(function(_, state)
         if state == Enum.HumanoidStateType.Dead then
-            Humanoid.Health = -1
-            Humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         end
     end)
 
-    -- 🔹 Anti estados molestos
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStand, false)
-
-    -- 🔥 Mantener vida negativa constante
-    RunService.Heartbeat:Connect(function()
-        if Humanoid and Humanoid.Health < 0 then
-            Humanoid.Health = -1
-        end
-    end)
-
-    -- 🔹 Anti fuerzas
+    -- 🔥 ANTI CAÍDA REAL (3 en 1)
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
+
+        local vel = Root.Velocity
+
+        if vel.Y < -40 then
+            Root.Velocity = Vector3.new(vel.X, -10, vel.Z)
+        end
+
+        if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and vel.Y < -35 then
+            Root.Velocity = Vector3.new(vel.X, 60, vel.Z)
+        end
 
         Root.RotVelocity = Vector3.new(0,0,0)
 
@@ -64,17 +89,6 @@ local function ProtectCharacter(char)
             then
                 v:Destroy()
             end
-        end
-    end)
-
-    -- 🔹 Anti caída
-    RunService.Heartbeat:Connect(function()
-        if not char or not char.Parent then return end
-
-        local vel = Root.Velocity
-
-        if vel.Y < -40 then
-            Root.Velocity = Vector3.new(vel.X, -10, vel.Z)
         end
     end)
 end
@@ -98,7 +112,7 @@ local oldNamecall = mt.__namecall
 
 mt.__namecall = newcclosure(function(self, ...)
     if getnamecallmethod() == "Kick" then
-        return warn("[VOID MODE]: Kick bloqueado")
+        return warn("[IMMORTAL]: Kick bloqueado")
     end
     return oldNamecall(self, ...)
 end)
