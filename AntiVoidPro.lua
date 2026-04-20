@@ -9,7 +9,7 @@ workspace.FallenPartsDestroyHeight = 0/0
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "IMMORTAL MODE",
-        Text = "Sistema activado",
+        Text = "Void real activado",
         Duration = 3
     })
 end)
@@ -19,11 +19,20 @@ local function VoidDrop(char)
 
     local original = Root.CFrame
 
-    -- 🔻 Caer al vacío
-    Root.CFrame = Root.CFrame - Vector3.new(0, 300, 0)
+    -- 🔻 Forzar bajada REAL al vacío (evita que el juego te suba)
+    for i = 1, 20 do
+        Root.CFrame = original - Vector3.new(0, 500, 0)
+        task.wait(0.02)
+    end
 
-    -- ⏱️ 5 SEGUNDOS EN EL VACÍO
+    -- 🔒 Anclar para que no te saque del vacío
+    Root.Anchored = true
+
+    -- ⏱️ Tiempo real en vacío
     task.wait(5)
+
+    -- 🔓 Desanclar
+    Root.Anchored = false
 
     -- 🔺 Volver arriba
     Root.CFrame = original + Vector3.new(0, 5, 0)
@@ -33,18 +42,18 @@ local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔥 ACTIVAR VOID AL SPAWN
+    -- 🔥 Activar void al spawn inmediato
     task.spawn(function()
-        task.wait(0.6)
+        task.wait(0.2)
         pcall(function()
             VoidDrop(char)
         end)
     end)
 
-    -- 🔹 Guardar vida anterior
+    -- 🔹 Guardar vida
     local lastHealth = Humanoid.Health
 
-    -- 🔥 DETECTOR DE DAÑO
+    -- 🔹 Anti daño
     Humanoid.HealthChanged:Connect(function(h)
         if h < lastHealth then
             Humanoid.Health = Humanoid.MaxHealth
@@ -64,7 +73,7 @@ local function ProtectCharacter(char)
         end
     end)
 
-    -- 🔥 ANTI CAÍDA + ANTI FUERZAS
+    -- 🔹 Anti caída + fuerzas
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
 
@@ -72,10 +81,6 @@ local function ProtectCharacter(char)
 
         if vel.Y < -40 then
             Root.Velocity = Vector3.new(vel.X, -10, vel.Z)
-        end
-
-        if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and vel.Y < -35 then
-            Root.Velocity = Vector3.new(vel.X, 60, vel.Z)
         end
 
         Root.RotVelocity = Vector3.new(0,0,0)
@@ -100,7 +105,6 @@ if Player.Character then
 end
 
 Player.CharacterAdded:Connect(function(char)
-    task.wait(0.5)
     ProtectCharacter(char)
 end)
 
