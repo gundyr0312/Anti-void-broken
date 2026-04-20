@@ -8,8 +8,8 @@ workspace.FallenPartsDestroyHeight = 0/0
 
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "IMMORTAL MODE",
-        Text = "Sistema activado",
+        Title = "VOID MODE",
+        Text = "Efecto vacío activado",
         Duration = 3
     })
 end)
@@ -18,13 +18,25 @@ local function ProtectCharacter(char)
     local Humanoid = char:WaitForChild("Humanoid")
     local Root = char:WaitForChild("HumanoidRootPart")
 
+    -- 🔥 EFECTO VACÍO (clave)
+    task.spawn(function()
+        task.wait(0.3)
+
+        if Humanoid and Humanoid.Health > 1 then
+            Humanoid.Health = 1
+            Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+            -- simula caída rara
+            Root.Velocity = Vector3.new(0, -100, 0)
+        end
+    end)
+
     -- 🔹 Guardar vida anterior
     local lastHealth = Humanoid.Health
 
-    -- 🔥 DETECTOR DE DAÑO (cura instantánea)
+    -- 🔹 Curación automática
     Humanoid.HealthChanged:Connect(function(h)
         if h < lastHealth then
-            -- Si recibió daño → lo curamos al instante
             Humanoid.Health = Humanoid.MaxHealth
         end
         lastHealth = Humanoid.Health
@@ -42,23 +54,20 @@ local function ProtectCharacter(char)
         end
     end)
 
-    -- 🔥 ANTI CAÍDA REAL (3 en 1)
+    -- 🔥 Anti caída + control físico
     RunService.Heartbeat:Connect(function()
         if not char or not char.Parent then return end
 
         local vel = Root.Velocity
 
-        -- 1. Limitar velocidad de caída (CLAVE)
         if vel.Y < -40 then
             Root.Velocity = Vector3.new(vel.X, -10, vel.Z)
         end
 
-        -- 2. Rebote suave
         if Humanoid:GetState() == Enum.HumanoidStateType.Freefall and vel.Y < -35 then
             Root.Velocity = Vector3.new(vel.X, 60, vel.Z)
         end
 
-        -- 3. Anti fuerzas externas
         Root.RotVelocity = Vector3.new(0,0,0)
 
         for _, v in pairs(Root:GetChildren()) do
@@ -92,7 +101,7 @@ local oldNamecall = mt.__namecall
 
 mt.__namecall = newcclosure(function(self, ...)
     if getnamecallmethod() == "Kick" then
-        return warn("[IMMORTAL]: Kick bloqueado")
+        return warn("[VOID MODE]: Kick bloqueado")
     end
     return oldNamecall(self, ...)
 end)
