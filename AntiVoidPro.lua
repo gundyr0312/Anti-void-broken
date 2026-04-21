@@ -8,11 +8,14 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 workspace.FallenPartsDestroyHeight = 0/0
 
--- 🔥 COLLISION GROUPS
+-- 🔥 COLLISION GROUPS: TÚ COLISIONAS CON EL MAPA, PERO NO CON JUGADORES
 pcall(function()
     PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
     PhysicsService:RegisterCollisionGroup("AntiflingMe")
+    -- Tú NO colisionas con otros jugadores
     PhysicsService:CollisionGroupSetCollidable("AntiflingPlayers", "AntiflingMe", false)
+    -- Pero SÍ colisionas con el Default = mapa, suelo, paredes
+    PhysicsService:CollisionGroupSetCollidable("AntiflingMe", "Default", true)
 end)
 
 -- 🟢 NOTIFICACIÓN ABAJO A LA DERECHA
@@ -77,19 +80,23 @@ end)
 -- ⚙️ CONFIG
 local Config = {
     anchor_dist = 30,
-    max_anchored_time = 0.3 -- 🔥 MÁXIMO TIEMPO ANCLADO
+    max_anchored_time = 0.3
 }
 
 local Character, Humanoid, HRP
-local AnchoredTime = 0 -- 🔥 CONTADOR ANTI-BRICK
+local AnchoredTime = 0
 local IsVoiding = false
 
-local function ForceNoCollide(char, groupName)
+-- 🔥 FUNCIÓN: SOLO CAMBIAR COLLISION GROUP, NO TOCAR CanCollide
+local function SetCollisionGroup(char, groupName)
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             pcall(function()
-                part.CanCollide = false
                 part.CollisionGroup = groupName
+                -- 🔥 IMPORTANTE: NO PONER CanCollide = false EN TU PERSONAJE
+                if groupName == "AntiflingPlayers" then
+                    part.CanCollide = false -- Solo a los demás
+                end
             end)
         end
     end
@@ -97,8 +104,10 @@ local function ForceNoCollide(char, groupName)
     char.DescendantAdded:Connect(function(part)
         if part:IsA("BasePart") then
             pcall(function()
-                part.CanCollide = false
                 part.CollisionGroup = groupName
+                if groupName == "AntiflingPlayers" then
+                    part.CanCollide = false
+                end
             end)
         end
     end)
@@ -131,11 +140,11 @@ local function SetupCharacter(char)
     Humanoid = char:WaitForChild("Humanoid")
     HRP = char:WaitForChild("HumanoidRootPart")
     
-    -- 🔥 DESANCLAR AL SPAWNEAR POR SI ACASO
     HRP.Anchored = false
     AnchoredTime = 0
 
-    ForceNoCollide(char, "AntiflingMe")
+    -- 🔥 TU PERSONAJE: CollisionGroup "AntiflingMe", CanCollide = true
+    SetCollisionGroup(char, "AntiflingMe")
     HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
     task.spawn(function()
@@ -158,28 +167,27 @@ local function SetupCharacter(char)
     end)
 end
 
+-- 🔥 METER A LOS DEMÁS AL GRUPO "AntiflingPlayers" CON CanCollide = false
 local function NukeAllPlayers()
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
-            ForceNoCollide(plr.Character, "AntiflingPlayers")
+            SetCollisionGroup(plr.Character, "AntiflingPlayers")
         end
     end
 end
 
--- 🔥 LOOP PRINCIPAL CON ANTI-BRICK
+-- 🔥 LOOP PRINCIPAL
 RunService.Heartbeat:Connect(function(dt)
-    if not Character or not Character.Parent or not HRP or not HRP.Parent then 
+    if not Character or not Character.Parent or not HRP.Parent then 
         AnchoredTime = 0
         return 
     end
 
-    -- 🔥 ANTI-BRICK: SI LLEVAS MUCHO TIEMPO ANCLADO, DESANCLAR A LA FUERZA
     if HRP.Anchored then
         AnchoredTime = AnchoredTime + dt
         if AnchoredTime > Config.max_anchored_time and not IsVoiding then
             HRP.Anchored = false
             AnchoredTime = 0
-            warn("Auto-desanclado por brick")
         end
         return
     else
@@ -195,7 +203,6 @@ RunService.Heartbeat:Connect(function(dt)
         HRP.AssemblyLinearVelocity = Vector3.zero
     end
 
-    -- 🔥 SMART ANCHOR CON FAILSAFE
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
             local OtherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -204,7 +211,6 @@ RunService.Heartbeat:Connect(function(dt)
                 local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
                 if Dist < Config.anchor_dist and OtherVel > 100 then
                     HRP.Anchored = true
-                    -- 🔥 FAILSAFE: SI EN 0.15s NO SE DESANCLÓ, FORZAR
                     task.delay(0.15, function()
                         if HRP and HRP.Parent and HRP.Anchored then 
                             HRP.Anchored = false 
