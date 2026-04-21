@@ -1,14 +1,19 @@
+-- =========================================================================
+-- Anti-Fling Hub UI + Lógica Anti-Stunlock
+-- =========================================================================
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local PhysicsService = game:GetService("PhysicsService")
 
-local Player = Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
 workspace.FallenPartsDestroyHeight = 0/0
 
--- 🔥 COLLISION GROUPS
+-- 🔥 COLLISION GROUPS: Fantasma para jugadores, sólido para mapa
 pcall(function()
     PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
     PhysicsService:RegisterCollisionGroup("AntiflingMe")
@@ -16,74 +21,136 @@ pcall(function()
     PhysicsService:CollisionGroupSetCollidable("AntiflingMe", "Default", true)
 end)
 
--- 🟢 NOTIFICACIÓN
-task.spawn(function()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "ImmortalNotif"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.Parent = PlayerGui
+-- =========================================================================
+-- UI BASE TUYA MODIFICADA
+-- =========================================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AntiFlingHubUI"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.ResetOnSpawn = false
 
-    local Frame = Instance.new("Frame", ScreenGui)
-    Frame.Size = UDim2.new(0, 240, 0, 50)
-    Frame.Position = UDim2.new(1, 260, 1, -60)
-    Frame.AnchorPoint = Vector2.new(0, 1)
-    Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    Frame.BackgroundTransparency = 0.1
-    Frame.BorderSizePixel = 0
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 250, 0, 150)
+MainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+MainFrame.BorderSizePixel = 1
+MainFrame.BorderColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.Position = UDim2.new(1, -MainFrame.Size.X.Offset - 10, 0.5, -MainFrame.Size.Y.Offset / 2)
+MainFrame.Parent = ScreenGui
 
-    local UICorner = Instance.new("UICorner", Frame)
-    UICorner.CornerRadius = UDim.new(0, 8)
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 25)
+TitleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
 
-    local UIStroke = Instance.new("UIStroke", Frame)
-    UIStroke.Color = Color3.fromRGB(0, 255, 0)
-    UIStroke.Thickness = 2
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, -25, 1, 0)
+TitleLabel.Position = UDim2.new(0, 0, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.Font = Enum.Font.SourceSansBold
+TitleLabel.TextSize = 18
+TitleLabel.Text = "Anti-Fling Hub"
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Center
+TitleLabel.Parent = TitleBar
 
-    local Title = Instance.new("TextLabel", Frame)
-    Title.Size = UDim2.new(1, -10, 0, 20)
-    Title.Position = UDim2.new(0, 5, 0, 5)
-    Title.BackgroundTransparency = 1
-    Title.Text = "🟢 SYS://IMMORTAL"
-    Title.TextColor3 = Color3.fromRGB(0, 255, 0)
-    Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 14
-    Title.TextXAlignment = Enum.TextXAlignment.Left
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 25, 1, 0)
+CloseButton.Position = UDim2.new(1, -25, 0, 0)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Font = Enum.Font.SourceSansBold
+CloseButton.TextSize = 18
+CloseButton.Text = "X"
+CloseButton.Parent = TitleBar
 
-    local Text = Instance.new("TextLabel", Frame)
-    Text.Size = UDim2.new(1, -10, 0, 20)
-    Text.Position = UDim2.new(0, 5, 0, 25)
-    Text.BackgroundTransparency = 1
-    Text.Text = "Estado: ACTIVO"
-    Text.TextColor3 = Color3.fromRGB(200, 200, 200)
-    Text.Font = Enum.Font.Gotham
-    Text.TextSize = 12
-    Text.TextXAlignment = Enum.TextXAlignment.Left
-
-    local TweenIn = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
-        Position = UDim2.new(1, -250, 1, -10)
-    })
-    TweenIn:Play()
-
-    task.wait(3)
-
-    local TweenOut = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-        Position = UDim2.new(1, 260, 1, -60)
-    })
-    TweenOut:Play()
-    TweenOut.Completed:Wait()
-
+CloseButton.MouseButton1Click:Connect(function()
+    if _G.positionCheckConnection then
+        _G.positionCheckConnection:Disconnect()
+        _G.positionCheckConnection = nil
+    end
+    if _G.antiFlingActive and rootPart then
+        pcall(function()
+            rootPart:SetNetworkOwner(player)
+        end)
+    end
     ScreenGui:Destroy()
+    print("Anti-Fling Hub e Script Desativados Completamente.")
 end)
 
--- ⚙️ CONFIG
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, 0, 1, -25)
+ContentFrame.Position = UDim2.new(0, 0, 0, 25)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Parent = ContentFrame
+ListLayout.FillDirection = Enum.FillDirection.Vertical
+ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+ListLayout.Padding = UDim.new(0, 5)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function AddToggle(parentFrame, name, defaultValue, callback)
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Size = UDim2.new(0.95, 0, 0, 30)
+    ToggleFrame.BackgroundTransparency = 1
+    ToggleFrame.Parent = parentFrame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -60, 1, 0)
+    Label.Position = UDim2.new(0, 5, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Label.Font = Enum.Font.SourceSans
+    Label.TextSize = 16
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Text = name
+    Label.Parent = ToggleFrame
+
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Size = UDim2.new(0, 50, 0, 20)
+    ToggleButton.Position = UDim2.new(1, -55, 0.5, -10)
+    ToggleButton.BackgroundColor3 = defaultValue and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.Font = Enum.Font.SourceSansBold
+    ToggleButton.TextSize = 14
+    ToggleButton.Text = defaultValue and "ATIVO" or "INATIVO"
+    ToggleButton.Parent = ToggleFrame
+
+    local currentValue = defaultValue
+    ToggleButton.MouseButton1Click:Connect(function()
+        currentValue = not currentValue
+        ToggleButton.BackgroundColor3 = currentValue and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+        ToggleButton.Text = currentValue and "ATIVO" or "INATIVO"
+        if callback then
+            callback(currentValue)
+        end
+    end)
+    return { SetValue = function(value) currentValue = value; ToggleButton.BackgroundColor3 = value and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0); ToggleButton.Text = value and "ATIVO" or "INATIVO" end }
+end
+
+-- =========================================================================
+-- LÓGICA ANTI-FLING + ANTI-STUNLOCK
+-- =========================================================================
+
+_G.antiFlingActive = false
+_G.lastPosition = Vector3.new(0, 0, 0)
+_G.positionCheckConnection = nil
+
 local Config = {
     anchor_dist = 30,
     max_anchored_time = 0.2,
     stunlock_threshold = 30,
-    stunlock_time = 0.2 -- 🔥 MÁS AGRESIVO: 0.2s
+    stunlock_time = 0.2
 }
 
-local Character, Humanoid, HRP
 local AnchoredTime = 0
 local IsVoiding = false
 local StunTime = 0
@@ -114,103 +181,83 @@ local function SetCollisionGroup(char, groupName)
     end)
 end
 
-local function VoidDrop(char)
-    if IsVoiding then return end
-    IsVoiding = true
-    local Root = char:WaitForChild("HumanoidRootPart")
-    local original = Root.CFrame
-
-    for i = 1, 20 do
-        if not Root or not Root.Parent then IsVoiding = false return end
-        Root.CFrame = original - Vector3.new(0, 500, 0)
-        task.wait(0.02)
-    end
-
-    Root.Anchored = true
-    task.wait(5)
-    if Root and Root.Parent then
-        Root.Anchored = false
-        Root.CFrame = original + Vector3.new(0, 5, 0)
-    end
-    IsVoiding = false
-end
-
--- 🔥 FUNCIÓN ANTI-STUCK BRUTAL
+-- 🔥 ANTI-STUCK BRUTAL: ROMPE PlatformStand, velocidad, y stun del servidor
 local function BreakStun()
-    if not HRP or not Humanoid then return end
+    if not rootPart or not character then return end
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
     
-    -- 1. Forzar estados
-    Humanoid.PlatformStand = false
-    Humanoid.Sit = false
-    Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    hum.PlatformStand = false
+    hum.Sit = false
+    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
     
-    -- 2. Reset velocidades
-    HRP.AssemblyLinearVelocity = Vector3.zero
-    HRP.AssemblyAngularVelocity = Vector3.zero
+    rootPart.AssemblyLinearVelocity = Vector3.zero
+    rootPart.AssemblyAngularVelocity = Vector3.zero
     
-    -- 3. Micro-teleport para romper stun del servidor
-    local cf = HRP.CFrame
-    HRP.CFrame = cf + Vector3.new(0, 0.1, 0)
+    local cf = rootPart.CFrame
+    rootPart.CFrame = cf + Vector3.new(0, 0.1, 0)
     
-    -- 4. Desanclar a la fuerza
-    HRP.Anchored = false
+    rootPart.Anchored = false
 end
 
 local function SetupCharacter(char)
-    Character = char
-    Humanoid = char:WaitForChild("Humanoid")
-    HRP = char:WaitForChild("HumanoidRootPart")
+    character = char
+    rootPart = char:WaitForChild("HumanoidRootPart")
+    local hum = char:WaitForChild("Humanoid")
     
-    HRP.Anchored = false
+    rootPart.Anchored = false
     AnchoredTime = 0
     StunTime = 0
-    LastPos = HRP.Position
+    LastPos = rootPart.Position
     LastMoveTime = tick()
 
     SetCollisionGroup(char, "AntiflingMe")
-    HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
+    rootPart.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
     task.spawn(function()
-        while Humanoid and Humanoid.Parent do
-            if Humanoid.Health < Humanoid.MaxHealth then
-                Humanoid.Health = Humanoid.MaxHealth
+        while hum and hum.Parent do
+            if hum.Health < hum.MaxHealth then
+                hum.Health = hum.MaxHealth
             end
-            -- 🔥 FORZAR PLATFORMSTAND = FALSE CADA FRAME
-            Humanoid.PlatformStand = false
-            Humanoid.Sit = false
+            hum.PlatformStand = false
+            hum.Sit = false
             task.wait()
         end
     end)
 
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+end
 
-    task.spawn(function()
-        task.wait(0.3)
-        VoidDrop(char)
-    end)
+player.CharacterAdded:Connect(function(newChar)
+    task.wait(0.5)
+    SetupCharacter(newChar)
+end)
+
+if character then
+    SetupCharacter(character)
 end
 
 local function NukeAllPlayers()
     for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= Player and plr.Character then
+        if plr ~= player and plr.Character then
             SetCollisionGroup(plr.Character, "AntiflingPlayers")
         end
     end
 end
 
--- 🔥 LOOP PRINCIPAL ULTRA AGRESIVO
-RunService.Heartbeat:Connect(function(dt)
-    if not Character or not Character.Parent or not HRP.Parent then 
+-- 🔥 CHECK POSITION + ANTI-STUNLOCK
+_G.checkPositionAndTeleport = function(dt)
+    if not _G.antiFlingActive or not rootPart.Parent then
         AnchoredTime = 0
         StunTime = 0
-        return 
+        return
     end
 
-    if HRP.Anchored then
+    if rootPart.Anchored then
         AnchoredTime = AnchoredTime + dt
         if AnchoredTime > Config.max_anchored_time and not IsVoiding then
             BreakStun()
@@ -223,21 +270,21 @@ RunService.Heartbeat:Connect(function(dt)
 
     NukeAllPlayers()
 
-    local vel = HRP.AssemblyLinearVelocity
-    local moveDelta = (HRP.Position - LastPos).Magnitude
+    local vel = rootPart.AssemblyLinearVelocity
+    local moveDelta = (rootPart.Position - LastPos).Magnitude
     
-    -- 🔥 DETECCIÓN DE STUNLOCK MEJORADA
+    -- Detectar stunlock: velocidad alta pero no te mueves
     if vel.Magnitude > Config.stunlock_threshold and moveDelta < 0.3 then
         StunTime = StunTime + dt
         if StunTime > Config.stunlock_time then
-            BreakStun() -- 🔥 ROMPER STUN A LA FUERZA
+            BreakStun()
             StunTime = 0
         end
     else
         StunTime = 0
     end
     
-    -- 🔥 SI NO TE HAS MOVIDO EN 0.5s Y HAY VELOCIDAD, ESTÁS STUNEADO
+    -- Si no te has movido en 0.5s pero tienes velocidad, estás stuneado
     if moveDelta < 0.1 and vel.Magnitude > 20 then
         if tick() - LastMoveTime > 0.5 then
             BreakStun()
@@ -247,25 +294,25 @@ RunService.Heartbeat:Connect(function(dt)
         LastMoveTime = tick()
     end
     
-    LastPos = HRP.Position
+    LastPos = rootPart.Position
 
-    HRP.AssemblyAngularVelocity = Vector3.zero
+    rootPart.AssemblyAngularVelocity = Vector3.zero
 
     if vel.Magnitude > 150 then
-        HRP.AssemblyLinearVelocity = Vector3.zero
+        rootPart.AssemblyLinearVelocity = Vector3.zero
     end
 
     -- Smart anchor
     for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= Player and plr.Character then
+        if plr ~= player and plr.Character then
             local OtherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
             if OtherHRP then
-                local Dist = (HRP.Position - OtherHRP.Position).Magnitude
+                local Dist = (rootPart.Position - OtherHRP.Position).Magnitude
                 local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
                 if Dist < Config.anchor_dist and OtherVel > 100 then
-                    HRP.Anchored = true
+                    rootPart.Anchored = true
                     task.delay(0.1, function()
-                        if HRP and HRP.Parent and HRP.Anchored then 
+                        if rootPart and rootPart.Parent and rootPart.Anchored then 
                             BreakStun()
                         end
                     end)
@@ -274,28 +321,51 @@ RunService.Heartbeat:Connect(function(dt)
             end
         end
     end
-end)
 
-local function ConnectCharacter()
-    if Player.Character then
-        SetupCharacter(Player.Character)
+    -- Teleport de recuperación si te fuiste muy lejos
+    local currentPosition = rootPart.Position
+    local distance = (currentPosition - _G.lastPosition).Magnitude
+    local flingThreshold = 60
+    local minMovementForTeleport = 0.5
+
+    if distance > flingThreshold and (currentPosition - _G.lastPosition).Magnitude > minMovementForTeleport then
+        pcall(function()
+            rootPart.CFrame = CFrame.new(_G.lastPosition)
+        end)
     end
+    _G.lastPosition = currentPosition
 end
 
-ConnectCharacter()
-Player.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    ConnectCharacter()
-end)
+-- Toggle del Anti-Fling
+local AntiFlingToggle = AddToggle(ContentFrame, "Anti-Fling", false, function(state)
+    _G.antiFlingActive = state
 
--- 🔹 ANTI KICK
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-local oldNamecall = mt.__namecall
+    if _G.antiFlingActive then
+        character = player.Character or player.CharacterAdded:Wait()
+        rootPart = character:WaitForChild("HumanoidRootPart")
 
-mt.__namecall = newcclosure(function(self,...)
-    if getnamecallmethod() == "Kick" then
-        return warn("Kick bloqueado")
+        pcall(function()
+            rootPart:SetNetworkOwner(nil)
+        end)
+
+        _G.lastPosition = rootPart.Position
+        LastPos = rootPart.Position
+        if not _G.positionCheckConnection then
+            _G.positionCheckConnection = RunService.Heartbeat:Connect(function(dt)
+                _G.checkPositionAndTeleport(dt)
+            end)
+        end
+        print("Anti-Fling Primário Ativado.")
+    else
+        if rootPart then
+            pcall(function()
+                rootPart:SetNetworkOwner(player)
+            end)
+        end
+        if _G.positionCheckConnection then
+            _G.positionCheckConnection:Disconnect()
+            _G.positionCheckConnection = nil
+        end
+        print("Anti-Fling Desativado!")
     end
-    return oldNamecall(self,...)
 end)
