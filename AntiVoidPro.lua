@@ -1,55 +1,37 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local PhysicsService = game:GetService("PhysicsService")
 local StarterGui = game:GetService("StarterGui")
 
 local Player = Players.LocalPlayer
 
 workspace.FallenPartsDestroyHeight = 0/0
 
+-- 🟢 NOTIFICACIÓN (NEGRO + VERDE)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "IMMORTAL MODE",
-        Text = "Ghost players + anti-hitbox activo",
-        Duration = 3
+        Title = "🟢 IMMORTAL SYSTEM",
+        Text = "AntiVoid + Ghost + Protección activa",
+        Duration = 3,
+        Icon = "rbxassetid://6023426915" -- icono opcional
     })
 end)
 
--- 🔥 CREAR GRUPOS DE COLISIÓN
-pcall(function()
-    PhysicsService:CreateCollisionGroup("Players")
-    PhysicsService:CreateCollisionGroup("LocalGhost")
-end)
+-- ⚙️ CONFIG
+local Config = {
+    disable_rotation = true,
+    limit_velocity = true,
+    limit_velocity_sensitivity = 150,
+    limit_velocity_slow = 0,
+    anti_ragdoll = true,
+    smart_anchor = true,
+    anchor_dist = 30,
+    noclip_others = true,
+    noclip_distance = 6
+}
 
-PhysicsService:CollisionGroupSetCollidable("Players", "LocalGhost", false)
-
--- 🔥 ASIGNAR GRUPO A OTROS JUGADORES
-local function SetPlayerGroup(character)
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            PhysicsService:SetPartCollisionGroup(part, "Players")
-        end
-    end
-end
-
--- 🔥 TU PERSONAJE → GRUPO GHOST
-local function SetLocalGhost(character)
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            PhysicsService:SetPartCollisionGroup(part, "LocalGhost")
-        end
-    end
-end
-
--- 🔥 ANTI HITBOX (reduce tamaño real)
-local function ReduceHitbox(character)
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            part.Size = part.Size * 0.3 -- reduce hitbox
-            part.Massless = true
-        end
-    end
-end
+local Character, Humanoid, HRP
+local OtherPlayers = {}
+local OriginalCollisions = {}
 
 -- 🔥 VOID METHOD
 local function VoidDrop(char)
@@ -68,21 +50,15 @@ local function VoidDrop(char)
     Root.CFrame = original + Vector3.new(0, 5, 0)
 end
 
-local function ProtectCharacter(char)
-    local Humanoid = char:WaitForChild("Humanoid")
-    local Root = char:WaitForChild("HumanoidRootPart")
+local function SetupCharacter(char)
+    Character = char
+    Humanoid = char:WaitForChild("Humanoid")
+    HRP = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔥 Aplicar ghost y hitbox
-    SetLocalGhost(char)
-    ReduceHitbox(char)
+    -- 🔥 PROTECCIÓN ROOT
+    HRP.CustomPhysicalProperties = PhysicalProperties.new(0,0,0,0,0)
 
-    -- 🔥 Activar void
-    task.spawn(function()
-        task.wait(0.2)
-        VoidDrop(char)
-    end)
-
-    -- 🔹 Anti daño
+    -- 🔥 SEMI INMORTALIDAD
     local lastHealth = Humanoid.Health
     Humanoid.HealthChanged:Connect(function(h)
         if h < lastHealth then
@@ -91,59 +67,123 @@ local function ProtectCharacter(char)
         lastHealth = Humanoid.Health
     end)
 
-    -- 🔹 Anti estados
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStand, false)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    -- 🔥 ANTI ESTADOS
+    if Config.anti_ragdoll then
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    end
 
-    Humanoid.StateChanged:Connect(function(_, state)
-        if state == Enum.HumanoidStateType.Dead then
-            Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+    -- 🔥 HITBOX + ANTI TOUCH
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            OriginalCollisions[part] = part.CanCollide
+            part.CustomPhysicalProperties = PhysicalProperties.new(0,0,0,0,0)
+            part.Touched:Connect(function() end)
         end
+    end
+
+    -- 🔥 ACTIVAR VOID AL SPAWN
+    task.spawn(function()
+        task.wait(0.3)
+        pcall(function()
+            VoidDrop(char)
+        end)
     end)
+end
 
-    -- 🔹 Anti fuerzas
-    RunService.Heartbeat:Connect(function()
-        if not char or not char.Parent then return end
+-- 🔹 CACHE JUGADORES
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function(char)
+        OtherPlayers[plr] = char
+    end)
+end)
 
-        Root.RotVelocity = Vector3.new(0,0,0)
+Players.PlayerRemoving:Connect(function(plr)
+    OtherPlayers[plr] = nil
+end)
 
-        for _, v in pairs(Root:GetChildren()) do
-            if v:IsA("BodyVelocity") 
-            or v:IsA("BodyForce") 
-            or v:IsA("BodyAngularVelocity")
-            or v:IsA("VectorForce")
-            then
-                v:Destroy()
+for _, plr in pairs(Players:GetPlayers()) do
+    if plr ~= Player and plr.Character then
+        OtherPlayers[plr] = plr.Character
+    end
+end
+
+-- 🔥 LOOP PRINCIPAL
+RunService.Heartbeat:Connect(function()
+    if not Character or not Humanoid or not HRP or HRP.Anchored then return end
+
+    local ShouldNoclip = false
+
+    -- 👻 GHOST SOLO JUGADORES
+    if Config.noclip_others then
+        for _, char in pairs(OtherPlayers) do
+            if char and char.Parent then
+                local OtherHRP = char:FindFirstChild("HumanoidRootPart")
+                if OtherHRP then
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+
+                    if (HRP.Position - OtherHRP.Position).Magnitude < Config.noclip_distance then
+                        ShouldNoclip = true
+                    end
+                end
             end
         end
-    end)
-end
-
--- 🔹 Aplicar a jugadores
-for _, p in pairs(Players:GetPlayers()) do
-    if p ~= Player and p.Character then
-        SetPlayerGroup(p.Character)
     end
-    p.CharacterAdded:Connect(SetPlayerGroup)
-end
 
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(SetPlayerGroup)
+    for part, original in pairs(OriginalCollisions) do
+        if part and part.Parent then
+            part.CanCollide = ShouldNoclip and false or original
+        end
+    end
+
+    -- 🔹 Anti rotación
+    if Config.disable_rotation then
+        HRP.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    -- 🔹 Anti velocidad
+    if Config.limit_velocity then
+        local Vel = HRP.AssemblyLinearVelocity
+        if Vel.Magnitude > Config.limit_velocity_sensitivity then
+            HRP.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+
+    -- 🔹 Smart anchor
+    if Config.smart_anchor then
+        for _, char in pairs(OtherPlayers) do
+            if char and char.Parent then
+                local OtherHRP = char:FindFirstChild("HumanoidRootPart")
+                if OtherHRP then
+                    local Dist = (HRP.Position - OtherHRP.Position).Magnitude
+                    local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
+                    if Dist < Config.anchor_dist and OtherVel > 100 then
+                        HRP.Anchored = true
+                        task.delay(0.1, function()
+                            if HRP then HRP.Anchored = false end
+                        end)
+                        break
+                    end
+                end
+            end
+        end
+    end
 end)
 
--- 🔹 Tu personaje
-if Player.Character then
-    ProtectCharacter(Player.Character)
-end
-
+-- 🔹 INICIO
+if Player.Character then SetupCharacter(Player.Character) end
 Player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
-    ProtectCharacter(char)
+    SetupCharacter(char)
 end)
 
--- 🔹 Anti kick
+-- 🔹 ANTI KICK
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
 local oldNamecall = mt.__namecall
