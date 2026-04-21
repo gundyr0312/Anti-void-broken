@@ -8,13 +8,11 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 workspace.FallenPartsDestroyHeight = 0/0
 
--- 🔥 COLLISION GROUPS: TÚ COLISIONAS CON EL MAPA, PERO NO CON JUGADORES
+-- 🔥 COLLISION GROUPS
 pcall(function()
     PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
     PhysicsService:RegisterCollisionGroup("AntiflingMe")
-    -- Tú NO colisionas con otros jugadores
     PhysicsService:CollisionGroupSetCollidable("AntiflingPlayers", "AntiflingMe", false)
-    -- Pero SÍ colisionas con el Default = mapa, suelo, paredes
     PhysicsService:CollisionGroupSetCollidable("AntiflingMe", "Default", true)
 end)
 
@@ -80,22 +78,25 @@ end)
 -- ⚙️ CONFIG
 local Config = {
     anchor_dist = 30,
-    max_anchored_time = 0.3
+    max_anchored_time = 0.3,
+    stunlock_threshold = 50, -- 🔥 VELOCIDAD PARA DETECTAR STUNLOCK
+    stunlock_time = 0.5 -- 🔥 TIEMPO STUNEADO PARA ACTIVAR COUNTER
 }
 
 local Character, Humanoid, HRP
 local AnchoredTime = 0
 local IsVoiding = false
+local StunTime = 0 -- 🔥 CONTADOR DE STUNLOCK
+local LastPos = Vector3.zero
+local BodyVel -- 🔥 PARA CONTRARRESTAR EMPUJONES
 
--- 🔥 FUNCIÓN: SOLO CAMBIAR COLLISION GROUP, NO TOCAR CanCollide
 local function SetCollisionGroup(char, groupName)
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             pcall(function()
                 part.CollisionGroup = groupName
-                -- 🔥 IMPORTANTE: NO PONER CanCollide = false EN TU PERSONAJE
                 if groupName == "AntiflingPlayers" then
-                    part.CanCollide = false -- Solo a los demás
+                    part.CanCollide = false
                 end
             end)
         end
@@ -113,7 +114,23 @@ local function SetCollisionGroup(char, groupName)
     end)
 end
 
--- 🔥 VOID CON FAILSAFE
+-- 🔥 ANTI-STUNLOCK: BODYVELOCITY PARA CONTRARRESTAR
+local function CreateCounterForce()
+    if BodyVel and BodyVel.Parent then return end
+    BodyVel = Instance.new("BodyVelocity")
+    BodyVel.MaxForce = Vector3.new(40000, 0, 40000) -- Solo X,Z para no flotar
+    BodyVel.Velocity = Vector3.zero
+    BodyVel.P = 1250
+    BodyVel.Parent = HRP
+end
+
+local function RemoveCounterForce()
+    if BodyVel then
+        BodyVel:Destroy()
+        BodyVel = nil
+    end
+end
+
 local function VoidDrop(char)
     if IsVoiding then return end
     IsVoiding = true
@@ -142,8 +159,10 @@ local function SetupCharacter(char)
     
     HRP.Anchored = false
     AnchoredTime = 0
+    StunTime = 0
+    LastPos = HRP.Position
+    RemoveCounterForce()
 
-    -- 🔥 TU PERSONAJE: CollisionGroup "AntiflingMe", CanCollide = true
     SetCollisionGroup(char, "AntiflingMe")
     HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
@@ -167,7 +186,6 @@ local function SetupCharacter(char)
     end)
 end
 
--- 🔥 METER A LOS DEMÁS AL GRUPO "AntiflingPlayers" CON CanCollide = false
 local function NukeAllPlayers()
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
@@ -176,10 +194,11 @@ local function NukeAllPlayers()
     end
 end
 
--- 🔥 LOOP PRINCIPAL
+-- 🔥 LOOP PRINCIPAL CON ANTI-STUNLOCK
 RunService.Heartbeat:Connect(function(dt)
     if not Character or not Character.Parent or not HRP.Parent then 
         AnchoredTime = 0
+        StunTime = 0
         return 
     end
 
@@ -196,13 +215,60 @@ RunService.Heartbeat:Connect(function(dt)
 
     NukeAllPlayers()
 
+    local vel = HRP.AssemblyLinearVelocity
+    local moveDelta = (HRP.Position - LastPos).Magnitude
+    
+    -- 🔥 DETECCIÓN DE STUNLOCK: TE EMPUJAN PERO NO TE MUEVES
+    if vel.Magnitude > Config.stunlock_threshold and moveDelta < 0.5 then
+        StunTime = StunTime + dt
+        
+        -- 🔥 SI LLEVAS 0.5s STUNEADO, ACTIVAR COUNTER
+        if StunTime > Config.stunlock_time then
+            CreateCounterForce()
+            -- Anclar 0.05s para romper el momentum del fling
+            HRP.Anchored = true
+            task.delay(0.05, function()
+                if HRP and HRP.Parent then 
+                    HRP.Anchored = false
+                    -- Empujar en dirección contraria al que te flinguea
+                    if BodyVel then
+                        local nearest = nil
+                        local minDist = math.huge
+                        for _, plr in pairs(Players:GetPlayers()) do
+                            if plr ~= Player and plr.Character then
+                                local oHRP = plr.Character:FindFirstChild("HumanoidRootPart")
+                                if oHRP then
+                                    local dist = (HRP.Position - oHRP.Position).Magnitude
+                                    if dist < minDist then
+                                        minDist = dist
+                                        nearest = oHRP
+                                    end
+                                end
+                            end
+                        end
+                        if nearest then
+                            local dir = (HRP.Position - nearest.Position).Unit
+                            BodyVel.Velocity = dir * 100 + Vector3.new(0, 20, 0) -- Empujón + saltito
+                        end
+                    end
+                end
+            end)
+            StunTime = 0
+        end
+    else
+        StunTime = 0
+        RemoveCounterForce()
+    end
+    
+    LastPos = HRP.Position
+
     HRP.AssemblyAngularVelocity = Vector3.zero
 
-    local vel = HRP.AssemblyLinearVelocity
     if vel.Magnitude > 150 then
         HRP.AssemblyLinearVelocity = Vector3.zero
     end
 
+    -- Smart anchor normal
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
             local OtherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
