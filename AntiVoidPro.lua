@@ -241,13 +241,54 @@ if character then
     SetupCharacter(character)
 end
 
-local function NukeAllPlayers()
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player and plr.Character then
-            SetCollisionGroup(plr.Character, "AntiflingPlayers")
-        end
-    end
+-- =========================================================================
+-- TU ANTI-FLING NUEVO - REEMPLAZA AL VIEJO
+-- =========================================================================
+
+local HeartbeatLoops = {}
+
+function AntiFling()
+   -- Limpiar loops viejos
+   for _, conn in pairs(HeartbeatLoops) do
+       if conn then conn:Disconnect() end
+   end
+   HeartbeatLoops = {}
+   
+   for _, v in next, game:GetDescendants() do
+       if v and v:IsA("Part") and v.Parent ~= player.Character and v.Anchored == false and v.Name == "HumanoidRootPart" then 
+           -- Meter al collision group
+           pcall(function()
+               v.CollisionGroup = "AntiflingPlayers"
+           end)
+           
+           local HeartbeatLoop = RunService.Heartbeat:Connect(function()
+               v.CustomPhysicalProperties = PhysicalProperties.new(0,0,0)
+               v.Velocity = Vector3.new(0,0,0)
+               v.RotVelocity = Vector3.new(0,0,0)
+               v.CanCollide = false
+               task.wait(1)
+           end)
+           table.insert(HeartbeatLoops, HeartbeatLoop)
+       end
+   end
+   
+   character.Humanoid.Died:Connect(function()
+       for _, conn in pairs(HeartbeatLoops) do
+           if conn then conn:Disconnect() end
+       end
+       HeartbeatLoops = {}
+   end)
 end
+
+workspace.DescendantAdded:Connect(function(part) 
+    if part:IsA("Part") and part.Name == "HumanoidRootPart" and part.Parent ~= game.Players.LocalPlayer.Character then 
+        pcall(function()
+            part.CollisionGroup = "AntiflingPlayers"
+        end)
+        task.wait(2) 
+        AntiFling()
+    end
+end)
 
 -- 🔥 CHECK POSITION + ANTI-STUNLOCK
 _G.checkPositionAndTeleport = function(dt)
@@ -267,8 +308,6 @@ _G.checkPositionAndTeleport = function(dt)
     else
         AnchoredTime = 0
     end
-
-    NukeAllPlayers()
 
     local vel = rootPart.AssemblyLinearVelocity
     local moveDelta = (rootPart.Position - LastPos).Magnitude
@@ -350,6 +389,10 @@ local AntiFlingToggle = AddToggle(ContentFrame, "Anti-Fling", false, function(st
 
         _G.lastPosition = rootPart.Position
         LastPos = rootPart.Position
+        
+        -- Ejecutar tu anti-fling nuevo
+        AntiFling()
+        
         if not _G.positionCheckConnection then
             _G.positionCheckConnection = RunService.Heartbeat:Connect(function(dt)
                 _G.checkPositionAndTeleport(dt)
@@ -366,6 +409,10 @@ local AntiFlingToggle = AddToggle(ContentFrame, "Anti-Fling", false, function(st
             _G.positionCheckConnection:Disconnect()
             _G.positionCheckConnection = nil
         end
+        for _, conn in pairs(HeartbeatLoops) do
+            if conn then conn:Disconnect() end
+        end
+        HeartbeatLoops = {}
         print("Anti-Fling Desativado!")
     end
 end)
