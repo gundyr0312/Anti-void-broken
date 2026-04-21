@@ -1,11 +1,19 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local PhysicsService = game:GetService("PhysicsService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
 workspace.FallenPartsDestroyHeight = 0/0
+
+-- 🔥 COLLISION GROUPS - CLAVE PARA 0 COLISIÓN
+pcall(function()
+    PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
+    PhysicsService:RegisterCollisionGroup("AntiflingMe")
+    PhysicsService:CollisionGroupSetCollidable("AntiflingPlayers", "AntiflingMe", false)
+end)
 
 -- 🟢 NOTIFICACIÓN ABAJO A LA DERECHA - 3 SEGUNDOS
 task.spawn(function()
@@ -68,13 +76,32 @@ end)
 
 -- ⚙️ CONFIG
 local Config = {
-    noclip_distance = 6,
     anchor_dist = 30
 }
 
 local Character, Humanoid, HRP
-local OtherPlayers = {}
-local OriginalCollisions = {}
+
+-- 🔥 FUNCIÓN PARA METER A CUALQUIERA AL GRUPO DE NO COLISIÓN
+local function ForceNoCollide(char, groupName)
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.CanCollide = false
+                part.CollisionGroup = groupName
+            end)
+        end
+    end
+    
+    -- Si le agregan partes nuevas con exploits
+    char.DescendantAdded:Connect(function(part)
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.CanCollide = false
+                part.CollisionGroup = groupName
+            end)
+        end
+    end)
+end
 
 -- 🔥 VOID
 local function VoidDrop(char)
@@ -98,6 +125,9 @@ local function SetupCharacter(char)
     Humanoid = char:WaitForChild("Humanoid")
     HRP = char:WaitForChild("HumanoidRootPart")
 
+    -- Tu personaje al grupo "AntiflingMe"
+    ForceNoCollide(char, "AntiflingMe")
+
     HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
     -- Vida infinita persistente
@@ -116,87 +146,42 @@ local function SetupCharacter(char)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 
-    -- Partes
-    table.clear(OriginalCollisions)
-    for _, part in pairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            OriginalCollisions[part] = part.CanCollide
-            part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
-        end
-    end
-
-    -- Detectar partes nuevas
-    char.DescendantAdded:Connect(function(part)
-        if part:IsA("BasePart") then
-            OriginalCollisions[part] = part.CanCollide
-            part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
-        end
-    end)
-
     task.spawn(function()
         task.wait(0.3)
         VoidDrop(char)
     end)
 end
 
--- 🔹 CACHE JUGADORES
-for _, plr in pairs(Players:GetPlayers()) do
-    if plr ~= Player and plr.Character then
-        OtherPlayers[plr] = plr.Character
+-- 🔥 METER A TODOS LOS DEMÁS AL GRUPO "AntiflingPlayers" CADA FRAME
+local function NukeAllPlayers()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= Player and plr.Character then
+            ForceNoCollide(plr.Character, "AntiflingPlayers")
+        end
     end
 end
 
-Players.PlayerAdded:Connect(function(plr)
-    plr.CharacterAdded:Connect(function(char)
-        OtherPlayers[plr] = char
-    end)
-end)
-
-Players.PlayerRemoving:Connect(function(plr)
-    OtherPlayers[plr] = nil
-end)
-
--- 🔥 LOOP PRINCIPAL - PERSISTENTE HASTA SALIR DEL JUEGO
+-- 🔥 LOOP PRINCIPAL - FUERZA BRUTA CADA FRAME
 RunService.Heartbeat:Connect(function()
-    -- Si no tienes character, no hacer nada pero el loop sigue vivo
     if not Character or not Character.Parent or not HRP or not HRP.Parent then return end
     if HRP.Anchored then return end
 
-    local ShouldNoclip = false
+    -- 🔥 NUKEAR COLISIÓN DE TODOS, SIEMPRE
+    NukeAllPlayers()
 
-    for _, char in pairs(OtherPlayers) do
-        if char and char.Parent then
-            local OtherHRP = char:FindFirstChild("HumanoidRootPart")
-            if OtherHRP then
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-
-                if (HRP.Position - OtherHRP.Position).Magnitude < Config.noclip_distance then
-                    ShouldNoclip = true
-                end
-            end
-        end
-    end
-
-    for part, original in pairs(OriginalCollisions) do
-        if part and part.Parent then
-            part.CanCollide = ShouldNoclip and false or original
-        end
-    end
-
+    -- Anti rotación
     HRP.AssemblyAngularVelocity = Vector3.zero
 
+    -- Anti velocidad
     local vel = HRP.AssemblyLinearVelocity
     if vel.Magnitude > 150 then
         HRP.AssemblyLinearVelocity = Vector3.zero
     end
 
-    for _, char in pairs(OtherPlayers) do
-        if char and char.Parent then
-            local OtherHRP = char:FindFirstChild("HumanoidRootPart")
+    -- Smart anchor - detecta cualquiera cerca y rápido
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= Player and plr.Character then
+            local OtherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
             if OtherHRP then
                 local Dist = (HRP.Position - OtherHRP.Position).Magnitude
                 local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
@@ -212,7 +197,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- 🔹 INIT + RE-CONEXIÓN AUTOMÁTICA AL MORIR/RESPAWNEAR
+-- 🔹 INIT + RE-CONEXIÓN AUTOMÁTICA
 local function ConnectCharacter()
     if Player.Character then
         SetupCharacter(Player.Character)
