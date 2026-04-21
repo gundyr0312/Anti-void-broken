@@ -17,7 +17,7 @@ task.spawn(function()
 
     local Frame = Instance.new("Frame", ScreenGui)
     Frame.Size = UDim2.new(0, 240, 0, 50)
-    Frame.Position = UDim2.new(1, 260, 1, -60) -- empieza fuera de pantalla
+    Frame.Position = UDim2.new(1, 260, 1, -60)
     Frame.AnchorPoint = Vector2.new(0, 1)
     Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     Frame.BackgroundTransparency = 0.1
@@ -50,13 +50,11 @@ task.spawn(function()
     Text.TextSize = 12
     Text.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Animación de entrada
     local TweenIn = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
         Position = UDim2.new(1, -250, 1, -10)
     })
     TweenIn:Play()
 
-    -- Esperar 3 segundos y salir
     task.wait(3)
 
     local TweenOut = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
@@ -84,6 +82,7 @@ local function VoidDrop(char)
     local original = Root.CFrame
 
     for i = 1, 20 do
+        if not Root or not Root.Parent then return end
         Root.CFrame = original - Vector3.new(0, 500, 0)
         task.wait(0.02)
     end
@@ -91,7 +90,6 @@ local function VoidDrop(char)
     Root.Anchored = true
     task.wait(5)
     Root.Anchored = false
-
     Root.CFrame = original + Vector3.new(0, 5, 0)
 end
 
@@ -102,25 +100,38 @@ local function SetupCharacter(char)
 
     HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
-    local lastHealth = Humanoid.Health
-    Humanoid.HealthChanged:Connect(function(h)
-        if h < lastHealth then
-            Humanoid.Health = Humanoid.MaxHealth
+    -- Vida infinita persistente
+    task.spawn(function()
+        while Humanoid and Humanoid.Parent do
+            if Humanoid.Health < Humanoid.MaxHealth then
+                Humanoid.Health = Humanoid.MaxHealth
+            end
+            task.wait()
         end
-        lastHealth = Humanoid.Health
     end)
 
+    -- Anti estados
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 
+    -- Partes
+    table.clear(OriginalCollisions)
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             OriginalCollisions[part] = part.CanCollide
             part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
         end
     end
+
+    -- Detectar partes nuevas
+    char.DescendantAdded:Connect(function(part)
+        if part:IsA("BasePart") then
+            OriginalCollisions[part] = part.CanCollide
+            part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
+        end
+    end)
 
     task.spawn(function()
         task.wait(0.3)
@@ -145,9 +156,11 @@ Players.PlayerRemoving:Connect(function(plr)
     OtherPlayers[plr] = nil
 end)
 
--- 🔥 LOOP PRINCIPAL
+-- 🔥 LOOP PRINCIPAL - PERSISTENTE HASTA SALIR DEL JUEGO
 RunService.Heartbeat:Connect(function()
-    if not Character or not HRP then return end
+    -- Si no tienes character, no hacer nada pero el loop sigue vivo
+    if not Character or not Character.Parent or not HRP or not HRP.Parent then return end
+    if HRP.Anchored then return end
 
     local ShouldNoclip = false
 
@@ -190,7 +203,7 @@ RunService.Heartbeat:Connect(function()
                 if Dist < Config.anchor_dist and OtherVel > 100 then
                     HRP.Anchored = true
                     task.delay(0.1, function()
-                        if HRP then HRP.Anchored = false end
+                        if HRP and HRP.Parent then HRP.Anchored = false end
                     end)
                     break
                 end
@@ -199,11 +212,17 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- 🔹 INIT
-if Player.Character then SetupCharacter(Player.Character) end
-Player.CharacterAdded:Connect(function(char)
+-- 🔹 INIT + RE-CONEXIÓN AUTOMÁTICA AL MORIR/RESPAWNEAR
+local function ConnectCharacter()
+    if Player.Character then
+        SetupCharacter(Player.Character)
+    end
+end
+
+ConnectCharacter()
+Player.CharacterAdded:Connect(function()
     task.wait(0.5)
-    SetupCharacter(char)
+    ConnectCharacter()
 end)
 
 -- 🔹 ANTI KICK
