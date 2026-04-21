@@ -8,14 +8,14 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 workspace.FallenPartsDestroyHeight = 0/0
 
--- 🔥 COLLISION GROUPS - CLAVE PARA 0 COLISIÓN
+-- 🔥 COLLISION GROUPS
 pcall(function()
     PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
     PhysicsService:RegisterCollisionGroup("AntiflingMe")
     PhysicsService:CollisionGroupSetCollidable("AntiflingPlayers", "AntiflingMe", false)
 end)
 
--- 🟢 NOTIFICACIÓN ABAJO A LA DERECHA - 3 SEGUNDOS
+-- 🟢 NOTIFICACIÓN ABAJO A LA DERECHA
 task.spawn(function()
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "ImmortalNotif"
@@ -76,12 +76,14 @@ end)
 
 -- ⚙️ CONFIG
 local Config = {
-    anchor_dist = 30
+    anchor_dist = 30,
+    max_anchored_time = 0.3 -- 🔥 MÁXIMO TIEMPO ANCLADO
 }
 
 local Character, Humanoid, HRP
+local AnchoredTime = 0 -- 🔥 CONTADOR ANTI-BRICK
+local IsVoiding = false
 
--- 🔥 FUNCIÓN PARA METER A CUALQUIERA AL GRUPO DE NO COLISIÓN
 local function ForceNoCollide(char, groupName)
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
@@ -92,7 +94,6 @@ local function ForceNoCollide(char, groupName)
         end
     end
     
-    -- Si le agregan partes nuevas con exploits
     char.DescendantAdded:Connect(function(part)
         if part:IsA("BasePart") then
             pcall(function()
@@ -103,34 +104,40 @@ local function ForceNoCollide(char, groupName)
     end)
 end
 
--- 🔥 VOID
+-- 🔥 VOID CON FAILSAFE
 local function VoidDrop(char)
+    if IsVoiding then return end
+    IsVoiding = true
     local Root = char:WaitForChild("HumanoidRootPart")
     local original = Root.CFrame
 
     for i = 1, 20 do
-        if not Root or not Root.Parent then return end
+        if not Root or not Root.Parent then IsVoiding = false return end
         Root.CFrame = original - Vector3.new(0, 500, 0)
         task.wait(0.02)
     end
 
     Root.Anchored = true
     task.wait(5)
-    Root.Anchored = false
-    Root.CFrame = original + Vector3.new(0, 5, 0)
+    if Root and Root.Parent then
+        Root.Anchored = false
+        Root.CFrame = original + Vector3.new(0, 5, 0)
+    end
+    IsVoiding = false
 end
 
 local function SetupCharacter(char)
     Character = char
     Humanoid = char:WaitForChild("Humanoid")
     HRP = char:WaitForChild("HumanoidRootPart")
+    
+    -- 🔥 DESANCLAR AL SPAWNEAR POR SI ACASO
+    HRP.Anchored = false
+    AnchoredTime = 0
 
-    -- Tu personaje al grupo "AntiflingMe"
     ForceNoCollide(char, "AntiflingMe")
-
     HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
-    -- Vida infinita persistente
     task.spawn(function()
         while Humanoid and Humanoid.Parent do
             if Humanoid.Health < Humanoid.MaxHealth then
@@ -140,7 +147,6 @@ local function SetupCharacter(char)
         end
     end)
 
-    -- Anti estados
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
@@ -152,7 +158,6 @@ local function SetupCharacter(char)
     end)
 end
 
--- 🔥 METER A TODOS LOS DEMÁS AL GRUPO "AntiflingPlayers" CADA FRAME
 local function NukeAllPlayers()
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
@@ -161,24 +166,36 @@ local function NukeAllPlayers()
     end
 end
 
--- 🔥 LOOP PRINCIPAL - FUERZA BRUTA CADA FRAME
-RunService.Heartbeat:Connect(function()
-    if not Character or not Character.Parent or not HRP or not HRP.Parent then return end
-    if HRP.Anchored then return end
+-- 🔥 LOOP PRINCIPAL CON ANTI-BRICK
+RunService.Heartbeat:Connect(function(dt)
+    if not Character or not Character.Parent or not HRP or not HRP.Parent then 
+        AnchoredTime = 0
+        return 
+    end
 
-    -- 🔥 NUKEAR COLISIÓN DE TODOS, SIEMPRE
+    -- 🔥 ANTI-BRICK: SI LLEVAS MUCHO TIEMPO ANCLADO, DESANCLAR A LA FUERZA
+    if HRP.Anchored then
+        AnchoredTime = AnchoredTime + dt
+        if AnchoredTime > Config.max_anchored_time and not IsVoiding then
+            HRP.Anchored = false
+            AnchoredTime = 0
+            warn("Auto-desanclado por brick")
+        end
+        return
+    else
+        AnchoredTime = 0
+    end
+
     NukeAllPlayers()
 
-    -- Anti rotación
     HRP.AssemblyAngularVelocity = Vector3.zero
 
-    -- Anti velocidad
     local vel = HRP.AssemblyLinearVelocity
     if vel.Magnitude > 150 then
         HRP.AssemblyLinearVelocity = Vector3.zero
     end
 
-    -- Smart anchor - detecta cualquiera cerca y rápido
+    -- 🔥 SMART ANCHOR CON FAILSAFE
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
             local OtherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -187,8 +204,11 @@ RunService.Heartbeat:Connect(function()
                 local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
                 if Dist < Config.anchor_dist and OtherVel > 100 then
                     HRP.Anchored = true
-                    task.delay(0.1, function()
-                        if HRP and HRP.Parent then HRP.Anchored = false end
+                    -- 🔥 FAILSAFE: SI EN 0.15s NO SE DESANCLÓ, FORZAR
+                    task.delay(0.15, function()
+                        if HRP and HRP.Parent and HRP.Anchored then 
+                            HRP.Anchored = false 
+                        end
                     end)
                     break
                 end
@@ -197,7 +217,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- 🔹 INIT + RE-CONEXIÓN AUTOMÁTICA
 local function ConnectCharacter()
     if Player.Character then
         SetupCharacter(Player.Character)
