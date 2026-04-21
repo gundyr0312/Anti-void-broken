@@ -1,39 +1,84 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
 
 local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
 
 workspace.FallenPartsDestroyHeight = 0/0
 
--- 🟢 NOTIFICACIÓN (NEGRO + VERDE)
-pcall(function()
-    StarterGui:SetCore("SendNotification", {
-        Title = "🟢 IMMORTAL SYSTEM",
-        Text = "AntiVoid + Ghost + Protección activa",
-        Duration = 3,
-        Icon = "rbxassetid://6023426915" -- icono opcional
+-- 🟢 NOTIFICACIÓN ABAJO A LA DERECHA - 3 SEGUNDOS
+task.spawn(function()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ImmortalNotif"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.Parent = PlayerGui
+
+    local Frame = Instance.new("Frame", ScreenGui)
+    Frame.Size = UDim2.new(0, 240, 0, 50)
+    Frame.Position = UDim2.new(1, 260, 1, -60) -- empieza fuera de pantalla
+    Frame.AnchorPoint = Vector2.new(0, 1)
+    Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    Frame.BackgroundTransparency = 0.1
+    Frame.BorderSizePixel = 0
+
+    local UICorner = Instance.new("UICorner", Frame)
+    UICorner.CornerRadius = UDim.new(0, 8)
+
+    local UIStroke = Instance.new("UIStroke", Frame)
+    UIStroke.Color = Color3.fromRGB(0, 255, 0)
+    UIStroke.Thickness = 2
+
+    local Title = Instance.new("TextLabel", Frame)
+    Title.Size = UDim2.new(1, -10, 0, 20)
+    Title.Position = UDim2.new(0, 5, 0, 5)
+    Title.BackgroundTransparency = 1
+    Title.Text = "🟢 SYS://IMMORTAL"
+    Title.TextColor3 = Color3.fromRGB(0, 255, 0)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 14
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+
+    local Text = Instance.new("TextLabel", Frame)
+    Text.Size = UDim2.new(1, -10, 0, 20)
+    Text.Position = UDim2.new(0, 5, 0, 25)
+    Text.BackgroundTransparency = 1
+    Text.Text = "Estado: ACTIVO"
+    Text.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Text.Font = Enum.Font.Gotham
+    Text.TextSize = 12
+    Text.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Animación de entrada
+    local TweenIn = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+        Position = UDim2.new(1, -250, 1, -10)
     })
+    TweenIn:Play()
+
+    -- Esperar 3 segundos y salir
+    task.wait(3)
+
+    local TweenOut = TweenService:Create(Frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Position = UDim2.new(1, 260, 1, -60)
+    })
+    TweenOut:Play()
+    TweenOut.Completed:Wait()
+
+    ScreenGui:Destroy()
 end)
 
 -- ⚙️ CONFIG
 local Config = {
-    disable_rotation = true,
-    limit_velocity = true,
-    limit_velocity_sensitivity = 150,
-    limit_velocity_slow = 0,
-    anti_ragdoll = true,
-    smart_anchor = true,
-    anchor_dist = 30,
-    noclip_others = true,
-    noclip_distance = 6
+    noclip_distance = 6,
+    anchor_dist = 30
 }
 
 local Character, Humanoid, HRP
 local OtherPlayers = {}
 local OriginalCollisions = {}
 
--- 🔥 VOID METHOD
+-- 🔥 VOID
 local function VoidDrop(char)
     local Root = char:WaitForChild("HumanoidRootPart")
     local original = Root.CFrame
@@ -55,10 +100,8 @@ local function SetupCharacter(char)
     Humanoid = char:WaitForChild("Humanoid")
     HRP = char:WaitForChild("HumanoidRootPart")
 
-    -- 🔥 PROTECCIÓN ROOT
-    HRP.CustomPhysicalProperties = PhysicalProperties.new(0,0,0,0,0)
+    HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
 
-    -- 🔥 SEMI INMORTALIDAD
     local lastHealth = Humanoid.Health
     Humanoid.HealthChanged:Connect(function(h)
         if h < lastHealth then
@@ -67,33 +110,31 @@ local function SetupCharacter(char)
         lastHealth = Humanoid.Health
     end)
 
-    -- 🔥 ANTI ESTADOS
-    if Config.anti_ragdoll then
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-    end
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 
-    -- 🔥 HITBOX + ANTI TOUCH
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             OriginalCollisions[part] = part.CanCollide
-            part.CustomPhysicalProperties = PhysicalProperties.new(0,0,0,0,0)
-            part.Touched:Connect(function() end)
+            part.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
         end
     end
 
-    -- 🔥 ACTIVAR VOID AL SPAWN
     task.spawn(function()
         task.wait(0.3)
-        pcall(function()
-            VoidDrop(char)
-        end)
+        VoidDrop(char)
     end)
 end
 
 -- 🔹 CACHE JUGADORES
+for _, plr in pairs(Players:GetPlayers()) do
+    if plr ~= Player and plr.Character then
+        OtherPlayers[plr] = plr.Character
+    end
+end
+
 Players.PlayerAdded:Connect(function(plr)
     plr.CharacterAdded:Connect(function(char)
         OtherPlayers[plr] = char
@@ -104,33 +145,24 @@ Players.PlayerRemoving:Connect(function(plr)
     OtherPlayers[plr] = nil
 end)
 
-for _, plr in pairs(Players:GetPlayers()) do
-    if plr ~= Player and plr.Character then
-        OtherPlayers[plr] = plr.Character
-    end
-end
-
 -- 🔥 LOOP PRINCIPAL
 RunService.Heartbeat:Connect(function()
-    if not Character or not Humanoid or not HRP or HRP.Anchored then return end
+    if not Character or not HRP then return end
 
     local ShouldNoclip = false
 
-    -- 👻 GHOST SOLO JUGADORES
-    if Config.noclip_others then
-        for _, char in pairs(OtherPlayers) do
-            if char and char.Parent then
-                local OtherHRP = char:FindFirstChild("HumanoidRootPart")
-                if OtherHRP then
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
+    for _, char in pairs(OtherPlayers) do
+        if char and char.Parent then
+            local OtherHRP = char:FindFirstChild("HumanoidRootPart")
+            if OtherHRP then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
                     end
+                end
 
-                    if (HRP.Position - OtherHRP.Position).Magnitude < Config.noclip_distance then
-                        ShouldNoclip = true
-                    end
+                if (HRP.Position - OtherHRP.Position).Magnitude < Config.noclip_distance then
+                    ShouldNoclip = true
                 end
             end
         end
@@ -142,41 +174,32 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    -- 🔹 Anti rotación
-    if Config.disable_rotation then
-        HRP.AssemblyAngularVelocity = Vector3.zero
+    HRP.AssemblyAngularVelocity = Vector3.zero
+
+    local vel = HRP.AssemblyLinearVelocity
+    if vel.Magnitude > 150 then
+        HRP.AssemblyLinearVelocity = Vector3.zero
     end
 
-    -- 🔹 Anti velocidad
-    if Config.limit_velocity then
-        local Vel = HRP.AssemblyLinearVelocity
-        if Vel.Magnitude > Config.limit_velocity_sensitivity then
-            HRP.AssemblyLinearVelocity = Vector3.zero
-        end
-    end
-
-    -- 🔹 Smart anchor
-    if Config.smart_anchor then
-        for _, char in pairs(OtherPlayers) do
-            if char and char.Parent then
-                local OtherHRP = char:FindFirstChild("HumanoidRootPart")
-                if OtherHRP then
-                    local Dist = (HRP.Position - OtherHRP.Position).Magnitude
-                    local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
-                    if Dist < Config.anchor_dist and OtherVel > 100 then
-                        HRP.Anchored = true
-                        task.delay(0.1, function()
-                            if HRP then HRP.Anchored = false end
-                        end)
-                        break
-                    end
+    for _, char in pairs(OtherPlayers) do
+        if char and char.Parent then
+            local OtherHRP = char:FindFirstChild("HumanoidRootPart")
+            if OtherHRP then
+                local Dist = (HRP.Position - OtherHRP.Position).Magnitude
+                local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
+                if Dist < Config.anchor_dist and OtherVel > 100 then
+                    HRP.Anchored = true
+                    task.delay(0.1, function()
+                        if HRP then HRP.Anchored = false end
+                    end)
+                    break
                 end
             end
         end
     end
 end)
 
--- 🔹 INICIO
+-- 🔹 INIT
 if Player.Character then SetupCharacter(Player.Character) end
 Player.CharacterAdded:Connect(function(char)
     task.wait(0.5)
@@ -188,9 +211,9 @@ local mt = getrawmetatable(game)
 setreadonly(mt, false)
 local oldNamecall = mt.__namecall
 
-mt.__namecall = newcclosure(function(self, ...)
+mt.__namecall = newcclosure(function(self,...)
     if getnamecallmethod() == "Kick" then
-        return warn("[IMMORTAL]: Kick bloqueado")
+        return warn("Kick bloqueado")
     end
-    return oldNamecall(self, ...)
+    return oldNamecall(self,...)
 end)
