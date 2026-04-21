@@ -16,7 +16,7 @@ pcall(function()
     PhysicsService:CollisionGroupSetCollidable("AntiflingMe", "Default", true)
 end)
 
--- 🟢 NOTIFICACIÓN ABAJO A LA DERECHA
+-- 🟢 NOTIFICACIÓN
 task.spawn(function()
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "ImmortalNotif"
@@ -78,17 +78,17 @@ end)
 -- ⚙️ CONFIG
 local Config = {
     anchor_dist = 30,
-    max_anchored_time = 0.3,
-    stunlock_threshold = 50, -- 🔥 VELOCIDAD PARA DETECTAR STUNLOCK
-    stunlock_time = 0.5 -- 🔥 TIEMPO STUNEADO PARA ACTIVAR COUNTER
+    max_anchored_time = 0.2,
+    stunlock_threshold = 30,
+    stunlock_time = 0.2 -- 🔥 MÁS AGRESIVO: 0.2s
 }
 
 local Character, Humanoid, HRP
 local AnchoredTime = 0
 local IsVoiding = false
-local StunTime = 0 -- 🔥 CONTADOR DE STUNLOCK
+local StunTime = 0
 local LastPos = Vector3.zero
-local BodyVel -- 🔥 PARA CONTRARRESTAR EMPUJONES
+local LastMoveTime = 0
 
 local function SetCollisionGroup(char, groupName)
     for _, part in pairs(char:GetDescendants()) do
@@ -114,23 +114,6 @@ local function SetCollisionGroup(char, groupName)
     end)
 end
 
--- 🔥 ANTI-STUNLOCK: BODYVELOCITY PARA CONTRARRESTAR
-local function CreateCounterForce()
-    if BodyVel and BodyVel.Parent then return end
-    BodyVel = Instance.new("BodyVelocity")
-    BodyVel.MaxForce = Vector3.new(40000, 0, 40000) -- Solo X,Z para no flotar
-    BodyVel.Velocity = Vector3.zero
-    BodyVel.P = 1250
-    BodyVel.Parent = HRP
-end
-
-local function RemoveCounterForce()
-    if BodyVel then
-        BodyVel:Destroy()
-        BodyVel = nil
-    end
-end
-
 local function VoidDrop(char)
     if IsVoiding then return end
     IsVoiding = true
@@ -152,6 +135,27 @@ local function VoidDrop(char)
     IsVoiding = false
 end
 
+-- 🔥 FUNCIÓN ANTI-STUCK BRUTAL
+local function BreakStun()
+    if not HRP or not Humanoid then return end
+    
+    -- 1. Forzar estados
+    Humanoid.PlatformStand = false
+    Humanoid.Sit = false
+    Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    
+    -- 2. Reset velocidades
+    HRP.AssemblyLinearVelocity = Vector3.zero
+    HRP.AssemblyAngularVelocity = Vector3.zero
+    
+    -- 3. Micro-teleport para romper stun del servidor
+    local cf = HRP.CFrame
+    HRP.CFrame = cf + Vector3.new(0, 0.1, 0)
+    
+    -- 4. Desanclar a la fuerza
+    HRP.Anchored = false
+end
+
 local function SetupCharacter(char)
     Character = char
     Humanoid = char:WaitForChild("Humanoid")
@@ -161,7 +165,7 @@ local function SetupCharacter(char)
     AnchoredTime = 0
     StunTime = 0
     LastPos = HRP.Position
-    RemoveCounterForce()
+    LastMoveTime = tick()
 
     SetCollisionGroup(char, "AntiflingMe")
     HRP.CustomPhysicalProperties = PhysicalProperties.new(1, 0.3, 0.5)
@@ -171,6 +175,9 @@ local function SetupCharacter(char)
             if Humanoid.Health < Humanoid.MaxHealth then
                 Humanoid.Health = Humanoid.MaxHealth
             end
+            -- 🔥 FORZAR PLATFORMSTAND = FALSE CADA FRAME
+            Humanoid.PlatformStand = false
+            Humanoid.Sit = false
             task.wait()
         end
     end)
@@ -179,6 +186,7 @@ local function SetupCharacter(char)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 
     task.spawn(function()
         task.wait(0.3)
@@ -194,7 +202,7 @@ local function NukeAllPlayers()
     end
 end
 
--- 🔥 LOOP PRINCIPAL CON ANTI-STUNLOCK
+-- 🔥 LOOP PRINCIPAL ULTRA AGRESIVO
 RunService.Heartbeat:Connect(function(dt)
     if not Character or not Character.Parent or not HRP.Parent then 
         AnchoredTime = 0
@@ -205,7 +213,7 @@ RunService.Heartbeat:Connect(function(dt)
     if HRP.Anchored then
         AnchoredTime = AnchoredTime + dt
         if AnchoredTime > Config.max_anchored_time and not IsVoiding then
-            HRP.Anchored = false
+            BreakStun()
             AnchoredTime = 0
         end
         return
@@ -218,46 +226,25 @@ RunService.Heartbeat:Connect(function(dt)
     local vel = HRP.AssemblyLinearVelocity
     local moveDelta = (HRP.Position - LastPos).Magnitude
     
-    -- 🔥 DETECCIÓN DE STUNLOCK: TE EMPUJAN PERO NO TE MUEVES
-    if vel.Magnitude > Config.stunlock_threshold and moveDelta < 0.5 then
+    -- 🔥 DETECCIÓN DE STUNLOCK MEJORADA
+    if vel.Magnitude > Config.stunlock_threshold and moveDelta < 0.3 then
         StunTime = StunTime + dt
-        
-        -- 🔥 SI LLEVAS 0.5s STUNEADO, ACTIVAR COUNTER
         if StunTime > Config.stunlock_time then
-            CreateCounterForce()
-            -- Anclar 0.05s para romper el momentum del fling
-            HRP.Anchored = true
-            task.delay(0.05, function()
-                if HRP and HRP.Parent then 
-                    HRP.Anchored = false
-                    -- Empujar en dirección contraria al que te flinguea
-                    if BodyVel then
-                        local nearest = nil
-                        local minDist = math.huge
-                        for _, plr in pairs(Players:GetPlayers()) do
-                            if plr ~= Player and plr.Character then
-                                local oHRP = plr.Character:FindFirstChild("HumanoidRootPart")
-                                if oHRP then
-                                    local dist = (HRP.Position - oHRP.Position).Magnitude
-                                    if dist < minDist then
-                                        minDist = dist
-                                        nearest = oHRP
-                                    end
-                                end
-                            end
-                        end
-                        if nearest then
-                            local dir = (HRP.Position - nearest.Position).Unit
-                            BodyVel.Velocity = dir * 100 + Vector3.new(0, 20, 0) -- Empujón + saltito
-                        end
-                    end
-                end
-            end)
+            BreakStun() -- 🔥 ROMPER STUN A LA FUERZA
             StunTime = 0
         end
     else
         StunTime = 0
-        RemoveCounterForce()
+    end
+    
+    -- 🔥 SI NO TE HAS MOVIDO EN 0.5s Y HAY VELOCIDAD, ESTÁS STUNEADO
+    if moveDelta < 0.1 and vel.Magnitude > 20 then
+        if tick() - LastMoveTime > 0.5 then
+            BreakStun()
+            LastMoveTime = tick()
+        end
+    else
+        LastMoveTime = tick()
     end
     
     LastPos = HRP.Position
@@ -268,7 +255,7 @@ RunService.Heartbeat:Connect(function(dt)
         HRP.AssemblyLinearVelocity = Vector3.zero
     end
 
-    -- Smart anchor normal
+    -- Smart anchor
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= Player and plr.Character then
             local OtherHRP = plr.Character:FindFirstChild("HumanoidRootPart")
@@ -277,9 +264,9 @@ RunService.Heartbeat:Connect(function(dt)
                 local OtherVel = OtherHRP.AssemblyLinearVelocity.Magnitude
                 if Dist < Config.anchor_dist and OtherVel > 100 then
                     HRP.Anchored = true
-                    task.delay(0.15, function()
+                    task.delay(0.1, function()
                         if HRP and HRP.Parent and HRP.Anchored then 
-                            HRP.Anchored = false 
+                            BreakStun()
                         end
                     end)
                     break
