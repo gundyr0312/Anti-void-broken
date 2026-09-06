@@ -1,3 +1,9 @@
+------------------------------------------------------------
+-- SYS://IMMORTAL
+-- CLIENT ONLY
+-- Inmortalidad + AntiCaída + AntiFling + AntiStun
+------------------------------------------------------------
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -10,62 +16,77 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 -- CONFIGURACIÓN
 ------------------------------------------------------------
 
-workspace.FallenPartsDestroyHeight = -50000
+pcall(function()
+	workspace.FallenPartsDestroyHeight = -50000
+end)
 
 local Config = {
 
-	-- Anti-Stun
-	anchor_dist = 30,
-	max_anchored_time = 0.2,
-	stunlock_threshold = 30,
-	stunlock_time = 0.2,
+	-- AntiStun
+	AnchorDistance = 30,
+	MaxAnchoredTime = 0.20,
+	StunlockThreshold = 30,
+	StunlockTime = 0.20,
 
-	-- Anti-Caída
-	fall_speed_threshold = -15,
+	-- Anti caída
+	FallSpeedThreshold = -10,
 
-	-- MUY IMPORTANTE:
-	-- El rayo ahora es bastante más largo.
-	min_ray_length = 25,
+	-- Raycast mínimo
+	MinRayLength = 30,
 
-	-- Tiempo de predicción
-	prediction_time = 0.30,
+	-- Predicción
+	PredictionTime = 0.35,
 
-	-- Altura de emergencia
-	void_height = -300,
+	-- Vacío
+	VoidHeight = -300,
 
-	-- Velocidad máxima permitida
-	max_velocity = 150,
-
-	-- Protección de vida
-	health_check_interval = 0.01
+	-- Velocidad máxima
+	MaxVelocity = 150
 }
+
+------------------------------------------------------------
+-- VARIABLES
+------------------------------------------------------------
+
+local Character = nil
+local Humanoid = nil
+local HRP = nil
+
+local CharacterConnections = {}
+local AntiFlingConnections = {}
+
+local AnchoredTime = 0
+local StunTime = 0
+
+local LastPosition = Vector3.zero
+local LastMoveTime = 0
 
 ------------------------------------------------------------
 -- COLLISION GROUPS
 ------------------------------------------------------------
 
 pcall(function()
+	PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
+end)
 
-	if not PhysicsService:IsCollisionGroupRegistered("AntiflingPlayers") then
-		PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
-	end
+pcall(function()
+	PhysicsService:RegisterCollisionGroup("AntiflingMe")
+end)
 
-	if not PhysicsService:IsCollisionGroupRegistered("AntiflingMe") then
-		PhysicsService:RegisterCollisionGroup("AntiflingMe")
-	end
-
+pcall(function()
 	PhysicsService:CollisionGroupSetCollidable(
 		"AntiflingPlayers",
 		"AntiflingMe",
 		false
 	)
+end)
 
+pcall(function()
 	PhysicsService:CollisionGroupSetCollidable(
 		"AntiflingMe",
 		"Default",
 		true
 	)
-
 end)
 
 ------------------------------------------------------------
@@ -89,14 +110,14 @@ task.spawn(function()
 	Frame.BorderSizePixel = 0
 	Frame.Parent = ScreenGui
 
-	local UICorner = Instance.new("UICorner")
-	UICorner.CornerRadius = UDim.new(0, 8)
-	UICorner.Parent = Frame
+	local Corner = Instance.new("UICorner")
+	Corner.CornerRadius = UDim.new(0, 8)
+	Corner.Parent = Frame
 
-	local UIStroke = Instance.new("UIStroke")
-	UIStroke.Color = Color3.fromRGB(0, 255, 0)
-	UIStroke.Thickness = 2
-	UIStroke.Parent = Frame
+	local Stroke = Instance.new("UIStroke")
+	Stroke.Color = Color3.fromRGB(0, 255, 0)
+	Stroke.Thickness = 2
+	Stroke.Parent = Frame
 
 	local Title = Instance.new("TextLabel")
 	Title.Size = UDim2.new(1, -10, 0, 20)
@@ -132,24 +153,24 @@ task.spawn(function()
 
 	task.wait(3)
 
-	if not Frame or not Frame.Parent then
-		return
+	if Frame and Frame.Parent then
+
+		local TweenOut = TweenService:Create(
+			Frame,
+			TweenInfo.new(
+				0.3,
+				Enum.EasingStyle.Back,
+				Enum.EasingDirection.In
+			),
+			{
+				Position = UDim2.new(1, 260, 1, -60)
+			}
+		)
+
+		TweenOut:Play()
+		TweenOut.Completed:Wait()
+
 	end
-
-	local TweenOut = TweenService:Create(
-		Frame,
-		TweenInfo.new(
-			0.3,
-			Enum.EasingStyle.Back,
-			Enum.EasingDirection.In
-		),
-		{
-			Position = UDim2.new(1, 260, 1, -60)
-		}
-	)
-
-	TweenOut:Play()
-	TweenOut.Completed:Wait()
 
 	if ScreenGui then
 		ScreenGui:Destroy()
@@ -158,35 +179,15 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- VARIABLES
+-- LIMPIAR CONEXIONES DEL PERSONAJE
 ------------------------------------------------------------
 
-local Character
-local Humanoid
-local HRP
+local function ClearCharacterConnections()
 
-local CharacterConnections = {}
-local GlobalConnections = {}
-local AntiFlingConnections = {}
+	for _, Connection in ipairs(CharacterConnections) do
 
-local AnchoredTime = 0
-local StunTime = 0
-
-local LastPos = Vector3.zero
-local LastMoveTime = 0
-
-local IsVoiding = false
-
-------------------------------------------------------------
--- LIMPIAR CONEXIONES
-------------------------------------------------------------
-
-local function DisconnectCharacterConnections()
-
-	for _, connection in ipairs(CharacterConnections) do
-
-		if connection then
-			connection:Disconnect()
+		if Connection then
+			Connection:Disconnect()
 		end
 
 	end
@@ -196,16 +197,41 @@ local function DisconnectCharacterConnections()
 end
 
 ------------------------------------------------------------
+-- LIMPIAR ANTI-FLING
+------------------------------------------------------------
+
+local function ClearAntiFling()
+
+	for _, Connection in ipairs(AntiFlingConnections) do
+
+		if Connection then
+			Connection:Disconnect()
+		end
+
+	end
+
+	table.clear(AntiFlingConnections)
+
+end
+
+------------------------------------------------------------
 -- BREAK STUN
 ------------------------------------------------------------
 
 local function BreakStun()
 
-	if not HRP or not HRP.Parent then
+	if not Character
+		or not Character.Parent then
 		return
 	end
 
-	if not Humanoid or not Humanoid.Parent then
+	if not Humanoid
+		or not Humanoid.Parent then
+		return
+	end
+
+	if not HRP
+		or not HRP.Parent then
 		return
 	end
 
@@ -213,187 +239,152 @@ local function BreakStun()
 	Humanoid.Sit = false
 
 	pcall(function()
-		Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		Humanoid:ChangeState(
+			Enum.HumanoidStateType.GettingUp
+		)
 	end)
 
 	HRP.AssemblyLinearVelocity = Vector3.zero
 	HRP.AssemblyAngularVelocity = Vector3.zero
-
-	local cf = HRP.CFrame
-
-	HRP.CFrame =
-		cf + Vector3.new(0, 0.1, 0)
 
 	HRP.Anchored = false
 
 end
 
 ------------------------------------------------------------
--- CONFIGURAR COLLISION GROUP
+-- COLLISION GROUP DEL PERSONAJE
 ------------------------------------------------------------
 
-local function SetCollisionGroup(char, groupName)
+local function SetCharacterCollisionGroup()
 
-	for _, part in ipairs(char:GetDescendants()) do
+	if not Character then
+		return
+	end
 
-		if part:IsA("BasePart") then
+	for _, Object in ipairs(
+		Character:GetDescendants()
+	) do
+
+		if Object:IsA("BasePart") then
 
 			pcall(function()
-
-				part.CollisionGroup = groupName
-
-				if groupName == "AntiflingPlayers" then
-					part.CanCollide = false
-				end
-
+				Object.CollisionGroup = "AntiflingMe"
 			end)
 
 		end
 
 	end
 
-	local connection =
-		char.DescendantAdded:Connect(function(part)
+	local Connection =
+		Character.DescendantAdded:Connect(
+			function(Object)
 
-			if not part:IsA("BasePart") then
-				return
-			end
+				if Object:IsA("BasePart") then
 
-			pcall(function()
+					pcall(function()
+						Object.CollisionGroup =
+							"AntiflingMe"
+					end)
 
-				part.CollisionGroup = groupName
-
-				if groupName == "AntiflingPlayers" then
-					part.CanCollide = false
 				end
 
-			end)
-
-		end)
+			end
+		)
 
 	table.insert(
 		CharacterConnections,
-		connection
+		Connection
 	)
 
 end
 
 ------------------------------------------------------------
--- RAYCAST
+-- RAYCAST PARAMETERS
 ------------------------------------------------------------
 
-local RaycastParams = RaycastParams.new()
+local RayParams = RaycastParams.new()
 
-RaycastParams.FilterType =
+RayParams.FilterType =
 	Enum.RaycastFilterType.Exclude
 
-RaycastParams.IgnoreWater = true
-
-local function GetGroundDistance()
-
-	if not HRP or not HRP.Parent then
-		return nil
-	end
-
-	if not Character or not Character.Parent then
-		return nil
-	end
-
-	RaycastParams.FilterDescendantsInstances = {
-		Character
-	}
-
-	local direction = Vector3.new(
-		0,
-		-Config.min_ray_length,
-		0
-	)
-
-	local result = workspace:Raycast(
-		HRP.Position,
-		direction,
-		RaycastParams
-	)
-
-	if result then
-
-		return (
-			HRP.Position -
-			result.Position
-		).Magnitude
-
-	end
-
-	return nil
-
-end
+RayParams.IgnoreWater = true
 
 ------------------------------------------------------------
--- ANTI-CAÍDA
+-- ANTI CAÍDA
 ------------------------------------------------------------
 
 local function AntiFall()
 
-	if not HRP or not HRP.Parent then
+	if not Character
+		or not Character.Parent then
 		return
 	end
 
-	if not Humanoid or not Humanoid.Parent then
+	if not HRP
+		or not HRP.Parent then
 		return
 	end
 
-	local velocity =
+	local Velocity =
 		HRP.AssemblyLinearVelocity
 
 	--------------------------------------------------------
-	-- DETECTAR SI ESTÁ CAYENDO
+	-- NO ESTÁ CAYENDO
 	--------------------------------------------------------
 
-	if velocity.Y >= Config.fall_speed_threshold then
+	if Velocity.Y >=
+		Config.FallSpeedThreshold then
+
 		return
+
 	end
 
 	--------------------------------------------------------
-	-- RAYCAST PREDICTIVO
+	-- IGNORAR PERSONAJE
 	--------------------------------------------------------
 
-	RaycastParams.FilterDescendantsInstances = {
+	RayParams.FilterDescendantsInstances = {
 		Character
 	}
 
-	local rayDistance = math.max(
-		Config.min_ray_length,
-		math.abs(velocity.Y) *
-		Config.prediction_time
+	--------------------------------------------------------
+	-- CALCULAR DISTANCIA
+	--------------------------------------------------------
+
+	local RayLength = math.max(
+		Config.MinRayLength,
+		math.abs(Velocity.Y) *
+		Config.PredictionTime
 	)
 
-	local result = workspace:Raycast(
+	--------------------------------------------------------
+	-- RAYCAST
+	--------------------------------------------------------
+
+	local Result = workspace:Raycast(
 		HRP.Position,
 		Vector3.new(
 			0,
-			-rayDistance,
+			-RayLength,
 			0
 		),
-		RaycastParams
+		RayParams
 	)
 
-	if result then
+	if Result then
 
 		----------------------------------------------------
-		-- HAY SUELO DEBAJO
+		-- SUELO DETECTADO
 		----------------------------------------------------
 
-		local currentVelocity =
+		local CurrentVelocity =
 			HRP.AssemblyLinearVelocity
-
-		-- Cancelamos la velocidad vertical
-		-- antes del siguiente paso de física.
 
 		HRP.AssemblyLinearVelocity =
 			Vector3.new(
-				currentVelocity.X,
+				CurrentVelocity.X,
 				0,
-				currentVelocity.Z
+				CurrentVelocity.Z
 			)
 
 	end
@@ -411,7 +402,7 @@ local function SetupImmortality()
 	end
 
 	--------------------------------------------------------
-	-- DEAD DESACTIVADO
+	-- DESACTIVAR DEAD
 	--------------------------------------------------------
 
 	Humanoid:SetStateEnabled(
@@ -420,7 +411,7 @@ local function SetupImmortality()
 	)
 
 	--------------------------------------------------------
-	-- ESTADOS QUE PUEDEN PROVOCAR STUN
+	-- DESACTIVAR ESTADOS DE RAGDOLL/STUN
 	--------------------------------------------------------
 
 	Humanoid:SetStateEnabled(
@@ -444,29 +435,30 @@ local function SetupImmortality()
 	)
 
 	--------------------------------------------------------
-	-- MOSTRAR VIDA REAL
+	-- VIDA REAL
+	--
+	-- NO SE CREA UNA VIDA FALSA.
+	-- ROBLOX SIGUE MOSTRANDO Humanoid.Health.
 	--------------------------------------------------------
 
 	Humanoid.HealthDisplayType =
 		Enum.HumanoidHealthDisplayType.DisplayWhenDamaged
 
 	--------------------------------------------------------
-	-- PROTECCIÓN INSTANTÁNEA
+	-- RECUPERACIÓN INMEDIATA
 	--------------------------------------------------------
 
 	local HealthConnection =
 		Humanoid.HealthChanged:Connect(
-			function(health)
+			function(NewHealth)
 
 				if not Humanoid
 					or not Humanoid.Parent then
 					return
 				end
 
-				-- Si recibe cualquier daño,
-				-- se restaura inmediatamente.
-
-				if health < Humanoid.MaxHealth then
+				if NewHealth <
+					Humanoid.MaxHealth then
 
 					Humanoid.Health =
 						Humanoid.MaxHealth
@@ -481,64 +473,37 @@ local function SetupImmortality()
 		HealthConnection
 	)
 
-	--------------------------------------------------------
-	-- SEGUNDA CAPA DE SEGURIDAD
-	--------------------------------------------------------
-
-	task.spawn(function()
-
-		while Humanoid
-			and Humanoid.Parent do
-
-			if Humanoid.Health <
-				Humanoid.MaxHealth then
-
-				Humanoid.Health =
-					Humanoid.MaxHealth
-
-			end
-
-			------------------------------------------------
-			-- EVITAR PLATFORM STAND
-			------------------------------------------------
-
-			if Humanoid.PlatformStand then
-				Humanoid.PlatformStand = false
-			end
-
-			------------------------------------------------
-			-- EVITAR SIT
-			------------------------------------------------
-
-			if Humanoid.Sit then
-				Humanoid.Sit = false
-			end
-
-			task.wait(
-				Config.health_check_interval
-			)
-
-		end
-
-	end)
-
 end
 
 ------------------------------------------------------------
--- VOID RECOVERY
+-- RECUPERACIÓN DEL VACÍO
 ------------------------------------------------------------
 
 local function RecoverFromVoid()
 
-	if not HRP or not HRP.Parent then
+	if not HRP
+		or not HRP.Parent then
 		return
 	end
 
-	if IsVoiding then
-		return
-	end
+	--------------------------------------------------------
+	-- BUSCAR SPAWN
+	--------------------------------------------------------
 
-	IsVoiding = true
+	local SpawnLocation = nil
+
+	for _, Object in ipairs(
+		workspace:GetDescendants()
+	) do
+
+		if Object:IsA("SpawnLocation") then
+
+			SpawnLocation = Object
+			break
+
+		end
+
+	end
 
 	--------------------------------------------------------
 	-- DETENER FÍSICA
@@ -551,32 +516,13 @@ local function RecoverFromVoid()
 		Vector3.zero
 
 	--------------------------------------------------------
-	-- BUSCAR SPAWN
-	--------------------------------------------------------
-
-	local spawnLocation
-
-	for _, object in ipairs(
-		workspace:GetDescendants()
-	) do
-
-		if object:IsA("SpawnLocation") then
-
-			spawnLocation = object
-			break
-
-		end
-
-	end
-
-	--------------------------------------------------------
 	-- TELETRANSPORTAR
 	--------------------------------------------------------
 
-	if spawnLocation then
+	if SpawnLocation then
 
 		HRP.CFrame =
-			spawnLocation.CFrame
+			SpawnLocation.CFrame
 			+ Vector3.new(0, 5, 0)
 
 	else
@@ -596,27 +542,27 @@ local function RecoverFromVoid()
 	HRP.AssemblyAngularVelocity =
 		Vector3.zero
 
-	task.wait(0.1)
-
-	IsVoiding = false
-
 end
 
 ------------------------------------------------------------
 -- CONFIGURAR PERSONAJE
 ------------------------------------------------------------
 
-local function SetupCharacter(char)
+local function SetupCharacter(NewCharacter)
 
-	DisconnectCharacterConnections()
+	ClearCharacterConnections()
 
-	Character = char
+	Character = NewCharacter
 
 	Humanoid =
-		char:WaitForChild("Humanoid")
+		Character:WaitForChild(
+			"Humanoid"
+		)
 
 	HRP =
-		char:WaitForChild("HumanoidRootPart")
+		Character:WaitForChild(
+			"HumanoidRootPart"
+		)
 
 	--------------------------------------------------------
 	-- RESET
@@ -624,9 +570,8 @@ local function SetupCharacter(char)
 
 	AnchoredTime = 0
 	StunTime = 0
-	IsVoiding = false
 
-	LastPos =
+	LastPosition =
 		HRP.Position
 
 	LastMoveTime =
@@ -638,13 +583,10 @@ local function SetupCharacter(char)
 	-- COLLISION
 	--------------------------------------------------------
 
-	SetCollisionGroup(
-		char,
-		"AntiflingMe"
-	)
+	SetCharacterCollisionGroup()
 
 	--------------------------------------------------------
-	-- FÍSICAS
+	-- PROPIEDADES FÍSICAS
 	--------------------------------------------------------
 
 	pcall(function()
@@ -667,26 +609,6 @@ local function SetupCharacter(char)
 end
 
 ------------------------------------------------------------
--- LIMPIAR ANTI-FLING
-------------------------------------------------------------
-
-local function ClearAntiFling()
-
-	for _, connection in ipairs(
-		AntiFlingConnections
-	) do
-
-		if connection then
-			connection:Disconnect()
-		end
-
-	end
-
-	table.clear(AntiFlingConnections)
-
-end
-
-------------------------------------------------------------
 -- ANTI-FLING
 ------------------------------------------------------------
 
@@ -694,57 +616,55 @@ local function AntiFling()
 
 	ClearAntiFling()
 
-	for _, v in ipairs(
+	for _, Object in ipairs(
 		workspace:GetDescendants()
 	) do
 
-		if not v then
+		if not Object:IsA("BasePart") then
 			continue
 		end
 
-		if not v:IsA("BasePart") then
+		if Object.Parent == Character then
 			continue
 		end
 
-		if v.Parent == Character then
+		if Object.Anchored then
 			continue
 		end
 
-		if v.Anchored then
-			continue
-		end
-
-		if v.Name ~= "HumanoidRootPart" then
+		if Object.Name ~=
+			"HumanoidRootPart" then
 			continue
 		end
 
 		----------------------------------------------------
-		-- COLLISION GROUP
+		-- COLLISION
 		----------------------------------------------------
 
 		pcall(function()
 
-			v.CollisionGroup =
+			Object.CollisionGroup =
 				"AntiflingPlayers"
 
-			v.CanCollide = false
+			Object.CanCollide = false
 
 		end)
 
 		----------------------------------------------------
-		-- PROTECCIÓN CONTINUA
+		-- CONTROL DE VELOCIDAD
 		----------------------------------------------------
 
-		local connection
+		local Connection
 
-		connection =
+		Connection =
 			RunService.Heartbeat:Connect(
 				function()
 
-					if not v or not v.Parent then
+					if not Object
+						or not Object.Parent then
 
-						if connection then
-							connection:Disconnect()
+						if Connection then
+							Connection:Disconnect()
 						end
 
 						return
@@ -753,20 +673,13 @@ local function AntiFling()
 
 					pcall(function()
 
-						v.CustomPhysicalProperties =
-							PhysicalProperties.new(
-								0,
-								0,
-								0
-							)
-
-						v.AssemblyLinearVelocity =
+						Object.AssemblyLinearVelocity =
 							Vector3.zero
 
-						v.AssemblyAngularVelocity =
+						Object.AssemblyAngularVelocity =
 							Vector3.zero
 
-						v.CanCollide = false
+						Object.CanCollide = false
 
 					end)
 
@@ -775,7 +688,7 @@ local function AntiFling()
 
 		table.insert(
 			AntiFlingConnections,
-			connection
+			Connection
 		)
 
 	end
@@ -783,306 +696,28 @@ local function AntiFling()
 end
 
 ------------------------------------------------------------
--- PERSONAJE NUEVO
+-- CHARACTER ADDED
 ------------------------------------------------------------
 
-table.insert(
-	GlobalConnections,
+Player.CharacterAdded:Connect(
+	function(NewCharacter)
 
-	Player.CharacterAdded:Connect(
-		function(newCharacter)
+		task.wait(0.15)
 
-			task.wait(0.2)
+		if NewCharacter
+			and NewCharacter.Parent then
 
-			if newCharacter
-				and newCharacter.Parent then
-
-				SetupCharacter(
-					newCharacter
-				)
-
-			end
-
-			task.delay(
-				0.5,
-				function()
-
-					if newCharacter
-						and newCharacter.Parent then
-
-						AntiFling()
-
-					end
-
-				end
+			SetupCharacter(
+				NewCharacter
 			)
 
 		end
-	)
-)
 
-------------------------------------------------------------
--- NUEVOS HUMANOIDROOTPART
-------------------------------------------------------------
+		task.wait(0.3)
 
-table.insert(
-	GlobalConnections,
+		AntiFling()
 
-	workspace.DescendantAdded:Connect(
-		function(part)
-
-			if not part:IsA("BasePart") then
-				return
-			end
-
-			if part.Name ~=
-				"HumanoidRootPart" then
-				return
-			end
-
-			if Character
-				and part.Parent == Character then
-				return
-			end
-
-			pcall(function()
-
-				part.CollisionGroup =
-					"AntiflingPlayers"
-
-				part.CanCollide = false
-
-			end)
-
-			task.delay(
-				0.5,
-				function()
-
-					if part and part.Parent then
-						AntiFling()
-					end
-
-				end
-			)
-
-		end
-	)
-)
-
-------------------------------------------------------------
--- BUCLE PRINCIPAL
---
--- STEPPED = ANTES DE LA SIMULACIÓN DE FÍSICAS
-------------------------------------------------------------
-
-table.insert(
-	GlobalConnections,
-
-	RunService.Stepped:Connect(
-		function(_, deltaTime)
-
-			if not Character
-				or not Character.Parent
-				or not Humanoid
-				or not Humanoid.Parent
-				or not HRP
-				or not HRP.Parent then
-
-				AnchoredTime = 0
-				StunTime = 0
-
-				return
-
-			end
-
-			------------------------------------------------
-			-- 1. VACÍO
-			------------------------------------------------
-
-			if HRP.Position.Y <
-				Config.void_height then
-
-				RecoverFromVoid()
-
-				return
-
-			end
-
-			------------------------------------------------
-			-- 2. ANTI-CAÍDA
-			------------------------------------------------
-
-			AntiFall()
-
-			------------------------------------------------
-			-- 3. ANTI-ANCHOR
-			------------------------------------------------
-
-			if HRP.Anchored then
-
-				AnchoredTime =
-					AnchoredTime + deltaTime
-
-				if AnchoredTime >
-					Config.max_anchored_time
-					and not IsVoiding then
-
-					BreakStun()
-
-					AnchoredTime = 0
-
-				end
-
-				return
-
-			else
-
-				AnchoredTime = 0
-
-			end
-
-			------------------------------------------------
-			-- 4. VELOCIDAD
-			------------------------------------------------
-
-			local vel =
-				HRP.AssemblyLinearVelocity
-
-			------------------------------------------------
-			-- 5. DETECCIÓN DE STUN
-			------------------------------------------------
-
-			local moveDelta =
-				(HRP.Position - LastPos).Magnitude
-
-			if vel.Magnitude >
-				Config.stunlock_threshold
-				and moveDelta < 0.3 then
-
-				StunTime =
-					StunTime + deltaTime
-
-				if StunTime >
-					Config.stunlock_time then
-
-					BreakStun()
-
-					StunTime = 0
-
-				end
-
-			else
-
-				StunTime = 0
-
-			end
-
-			------------------------------------------------
-			-- 6. PERSONAJE ATASCADO
-			------------------------------------------------
-
-			if moveDelta < 0.1
-				and vel.Magnitude > 20 then
-
-				if tick() - LastMoveTime > 0.5 then
-
-					BreakStun()
-
-					LastMoveTime =
-						tick()
-
-				end
-
-			else
-
-				LastMoveTime =
-					tick()
-
-			end
-
-			LastPos =
-				HRP.Position
-
-			------------------------------------------------
-			-- 7. ROTACIÓN
-			------------------------------------------------
-
-			HRP.AssemblyAngularVelocity =
-				Vector3.zero
-
-			------------------------------------------------
-			-- 8. VELOCIDAD EXTREMA
-			------------------------------------------------
-
-			if vel.Magnitude >
-				Config.max_velocity then
-
-				HRP.AssemblyLinearVelocity =
-					Vector3.zero
-
-			end
-
-			------------------------------------------------
-			-- 9. ANTI-FLING DE JUGADORES CERCANOS
-			------------------------------------------------
-
-			for _, plr in ipairs(
-				Players:GetPlayers()
-			) do
-
-				if plr ~= Player
-					and plr.Character then
-
-					local OtherHRP =
-						plr.Character:FindFirstChild(
-							"HumanoidRootPart"
-						)
-
-					if OtherHRP then
-
-						local Dist =
-							(
-								HRP.Position -
-								OtherHRP.Position
-							).Magnitude
-
-						local OtherVel =
-							OtherHRP.AssemblyLinearVelocity
-							.Magnitude
-
-						if Dist <
-							Config.anchor_dist
-							and OtherVel > 100 then
-
-							HRP.Anchored = true
-
-							task.delay(
-								0.1,
-								function()
-
-									if HRP
-										and HRP.Parent
-										and HRP.Anchored then
-
-										BreakStun()
-
-									end
-
-								end
-							)
-
-							break
-
-						end
-
-					end
-
-				end
-
-			end
-
-		end
-	)
+	end
 )
 
 ------------------------------------------------------------
@@ -1098,7 +733,280 @@ if Player.Character then
 end
 
 ------------------------------------------------------------
--- ESPERAR CARGA COMPLETA
+-- NUEVOS HUMANOIDROOTPART
+------------------------------------------------------------
+
+workspace.DescendantAdded:Connect(
+	function(Object)
+
+		if not Object:IsA("BasePart") then
+			return
+		end
+
+		if Object.Name ~=
+			"HumanoidRootPart" then
+			return
+		end
+
+		if Character
+			and Object.Parent == Character then
+			return
+		end
+
+		pcall(function()
+
+			Object.CollisionGroup =
+				"AntiflingPlayers"
+
+			Object.CanCollide = false
+
+		end)
+
+	end
+)
+
+------------------------------------------------------------
+-- BUCLE PRINCIPAL
+------------------------------------------------------------
+
+RunService.Stepped:Connect(
+	function(_, DeltaTime)
+
+		if not Character
+			or not Character.Parent then
+			return
+		end
+
+		if not Humanoid
+			or not Humanoid.Parent then
+			return
+		end
+
+		if not HRP
+			or not HRP.Parent then
+			return
+		end
+
+		----------------------------------------------------
+		-- 1. VIDA
+		----------------------------------------------------
+
+		-- Segunda capa de protección.
+		-- HealthChanged es la primera.
+
+		if Humanoid.Health <
+			Humanoid.MaxHealth then
+
+			Humanoid.Health =
+				Humanoid.MaxHealth
+
+		end
+
+		----------------------------------------------------
+		-- 2. ESTADOS
+		----------------------------------------------------
+
+		Humanoid.PlatformStand = false
+		Humanoid.Sit = false
+
+		----------------------------------------------------
+		-- 3. VACÍO
+		----------------------------------------------------
+
+		if HRP.Position.Y <
+			Config.VoidHeight then
+
+			RecoverFromVoid()
+
+			return
+
+		end
+
+		----------------------------------------------------
+		-- 4. ANTI CAÍDA
+		----------------------------------------------------
+
+		AntiFall()
+
+		----------------------------------------------------
+		-- 5. ANTI ANCHOR
+		----------------------------------------------------
+
+		if HRP.Anchored then
+
+			AnchoredTime =
+				AnchoredTime + DeltaTime
+
+			if AnchoredTime >
+				Config.MaxAnchoredTime then
+
+				BreakStun()
+
+				AnchoredTime = 0
+
+			end
+
+			return
+
+		else
+
+			AnchoredTime = 0
+
+		end
+
+		----------------------------------------------------
+		-- 6. VELOCIDAD
+		----------------------------------------------------
+
+		local Velocity =
+			HRP.AssemblyLinearVelocity
+
+		----------------------------------------------------
+		-- 7. MOVIMIENTO
+		----------------------------------------------------
+
+		local MoveDelta =
+			(
+				HRP.Position -
+				LastPosition
+			).Magnitude
+
+		----------------------------------------------------
+		-- 8. STUNLOCK
+		----------------------------------------------------
+
+		if Velocity.Magnitude >
+			Config.StunlockThreshold
+			and MoveDelta < 0.3 then
+
+			StunTime =
+				StunTime + DeltaTime
+
+			if StunTime >
+				Config.StunlockTime then
+
+				BreakStun()
+
+				StunTime = 0
+
+			end
+
+		else
+
+			StunTime = 0
+
+		end
+
+		----------------------------------------------------
+		-- 9. ATASCADO
+		----------------------------------------------------
+
+		if MoveDelta < 0.1
+			and Velocity.Magnitude > 20 then
+
+			if tick() - LastMoveTime > 0.5 then
+
+				BreakStun()
+
+				LastMoveTime =
+					tick()
+
+			end
+
+		else
+
+			LastMoveTime =
+				tick()
+
+		end
+
+		LastPosition =
+			HRP.Position
+
+		----------------------------------------------------
+		-- 10. ROTACIÓN
+		----------------------------------------------------
+
+		HRP.AssemblyAngularVelocity =
+			Vector3.zero
+
+		----------------------------------------------------
+		-- 11. VELOCIDAD EXTREMA
+		----------------------------------------------------
+
+		if Velocity.Magnitude >
+			Config.MaxVelocity then
+
+			HRP.AssemblyLinearVelocity =
+				Vector3.zero
+
+		end
+
+		----------------------------------------------------
+		-- 12. ANTI-FLING CERCANO
+		----------------------------------------------------
+
+		for _, OtherPlayer in ipairs(
+			Players:GetPlayers()
+		) do
+
+			if OtherPlayer ~= Player
+				and OtherPlayer.Character then
+
+				local OtherHRP =
+					OtherPlayer.Character:
+					FindFirstChild(
+						"HumanoidRootPart"
+					)
+
+				if OtherHRP then
+
+					local Distance =
+						(
+							HRP.Position -
+							OtherHRP.Position
+						).Magnitude
+
+					local OtherVelocity =
+						OtherHRP.AssemblyLinearVelocity
+						.Magnitude
+
+					if Distance <
+						Config.AnchorDistance
+						and OtherVelocity > 100 then
+
+						HRP.Anchored = true
+
+						task.delay(
+							0.1,
+							function()
+
+								if HRP
+									and HRP.Parent
+									and HRP.Anchored then
+
+									BreakStun()
+
+								end
+
+							end
+						)
+
+						break
+
+					end
+
+				end
+
+			end
+
+		end
+
+	end
+)
+
+------------------------------------------------------------
+-- INICIAR ANTI-FLING
 ------------------------------------------------------------
 
 task.spawn(function()
@@ -1116,4 +1024,3 @@ task.spawn(function()
 	AntiFling()
 
 end)
-```
