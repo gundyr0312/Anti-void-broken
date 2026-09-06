@@ -1,3 +1,4 @@
+```lua
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -7,33 +8,37 @@ local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
 ------------------------------------------------------------
--- CONFIGURACIÓN GENERAL
+-- CONFIGURACIÓN
 ------------------------------------------------------------
 
--- Evita que Roblox destruya las partes del personaje por caer al vacío.
 workspace.FallenPartsDestroyHeight = -50000
 
 local Config = {
-	-- Anti-stun
+
+	-- Anti-Stun
 	anchor_dist = 30,
 	max_anchored_time = 0.2,
 	stunlock_threshold = 30,
 	stunlock_time = 0.2,
 
-	-- Anti-caída
-	fall_speed_threshold = -30,
-	min_ray_length = 15,
-	prediction_time = 0.15,
+	-- Anti-Caída
+	fall_speed_threshold = -15,
 
-	-- Vacío
+	-- MUY IMPORTANTE:
+	-- El rayo ahora es bastante más largo.
+	min_ray_length = 25,
+
+	-- Tiempo de predicción
+	prediction_time = 0.30,
+
+	-- Altura de emergencia
 	void_height = -300,
-	void_buffer = 50,
 
-	-- Anti-velocidad extrema
+	-- Velocidad máxima permitida
 	max_velocity = 150,
 
-	-- Seguridad
-	health_check_interval = 0.05
+	-- Protección de vida
+	health_check_interval = 0.01
 }
 
 ------------------------------------------------------------
@@ -41,6 +46,7 @@ local Config = {
 ------------------------------------------------------------
 
 pcall(function()
+
 	if not PhysicsService:IsCollisionGroupRegistered("AntiflingPlayers") then
 		PhysicsService:RegisterCollisionGroup("AntiflingPlayers")
 	end
@@ -60,6 +66,7 @@ pcall(function()
 		"Default",
 		true
 	)
+
 end)
 
 ------------------------------------------------------------
@@ -126,6 +133,10 @@ task.spawn(function()
 
 	task.wait(3)
 
+	if not Frame or not Frame.Parent then
+		return
+	end
+
 	local TweenOut = TweenService:Create(
 		Frame,
 		TweenInfo.new(
@@ -148,7 +159,7 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- VARIABLES DEL PERSONAJE
+-- VARIABLES
 ------------------------------------------------------------
 
 local Character
@@ -157,25 +168,28 @@ local HRP
 
 local CharacterConnections = {}
 local GlobalConnections = {}
-local HeartbeatLoops = {}
+local AntiFlingConnections = {}
 
 local AnchoredTime = 0
-local IsVoiding = false
 local StunTime = 0
 
 local LastPos = Vector3.zero
 local LastMoveTime = 0
 
+local IsVoiding = false
+
 ------------------------------------------------------------
--- LIMPIAR CONEXIONES DEL PERSONAJE
+-- LIMPIAR CONEXIONES
 ------------------------------------------------------------
 
 local function DisconnectCharacterConnections()
 
 	for _, connection in ipairs(CharacterConnections) do
+
 		if connection then
 			connection:Disconnect()
 		end
+
 	end
 
 	table.clear(CharacterConnections)
@@ -208,72 +222,15 @@ local function BreakStun()
 
 	local cf = HRP.CFrame
 
-	HRP.CFrame = cf + Vector3.new(0, 0.1, 0)
+	HRP.CFrame =
+		cf + Vector3.new(0, 0.1, 0)
 
 	HRP.Anchored = false
 
 end
 
 ------------------------------------------------------------
--- VOID DROP
-------------------------------------------------------------
-
-local function VoidDrop(char)
-
-	if IsVoiding then
-		return
-	end
-
-	IsVoiding = true
-
-	local Root = char:FindFirstChild("HumanoidRootPart")
-
-	if not Root then
-		IsVoiding = false
-		return
-	end
-
-	local original = Root.CFrame
-
-	for i = 1, 20 do
-
-		if not Root or not Root.Parent then
-			IsVoiding = false
-			return
-		end
-
-		Root.CFrame = original - Vector3.new(0, 500, 0)
-
-		task.wait(0.02)
-
-	end
-
-	if Root and Root.Parent then
-
-		Root.Anchored = true
-
-		task.wait(5)
-
-		if Root and Root.Parent then
-
-			Root.Anchored = false
-
-			Root.CFrame =
-				original + Vector3.new(0, 5, 0)
-
-			Root.AssemblyLinearVelocity = Vector3.zero
-			Root.AssemblyAngularVelocity = Vector3.zero
-
-		end
-
-	end
-
-	IsVoiding = false
-
-end
-
-------------------------------------------------------------
--- COLLISION GROUP
+-- CONFIGURAR COLLISION GROUP
 ------------------------------------------------------------
 
 local function SetCollisionGroup(char, groupName)
@@ -296,76 +253,60 @@ local function SetCollisionGroup(char, groupName)
 
 	end
 
-	-- IMPORTANTE:
-	-- Los nuevos objetos añadidos al personaje también reciben
-	-- automáticamente el CollisionGroup.
+	local connection =
+		char.DescendantAdded:Connect(function(part)
 
-	local connection
-
-	connection = char.DescendantAdded:Connect(function(part)
-
-		if not part:IsA("BasePart") then
-			return
-		end
-
-		pcall(function()
-
-			part.CollisionGroup = groupName
-
-			if groupName == "AntiflingPlayers" then
-				part.CanCollide = false
+			if not part:IsA("BasePart") then
+				return
 			end
+
+			pcall(function()
+
+				part.CollisionGroup = groupName
+
+				if groupName == "AntiflingPlayers" then
+					part.CanCollide = false
+				end
+
+			end)
 
 		end)
 
-	end)
-
-	table.insert(CharacterConnections, connection)
+	table.insert(
+		CharacterConnections,
+		connection
+	)
 
 end
 
 ------------------------------------------------------------
--- RAYCAST ANTI-CAÍDA
+-- RAYCAST
 ------------------------------------------------------------
 
 local RaycastParams = RaycastParams.new()
 
-RaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+RaycastParams.FilterType =
+	Enum.RaycastFilterType.Exclude
+
 RaycastParams.IgnoreWater = true
 
-local function AntiFall()
+local function GetGroundDistance()
 
 	if not HRP or not HRP.Parent then
-		return
+		return nil
 	end
 
 	if not Character or not Character.Parent then
-		return
+		return nil
 	end
 
 	RaycastParams.FilterDescendantsInstances = {
 		Character
 	}
 
-	local velocity = HRP.AssemblyLinearVelocity
-
-	-- Solo nos interesa cuando realmente está cayendo.
-	if velocity.Y >= Config.fall_speed_threshold then
-		return
-	end
-
-	--------------------------------------------------------
-	-- LONGITUD PREDICTIVA
-	--------------------------------------------------------
-
-	local rayDistance = math.max(
-		Config.min_ray_length,
-		math.abs(velocity.Y) * Config.prediction_time
-	)
-
 	local direction = Vector3.new(
 		0,
-		-rayDistance,
+		-Config.min_ray_length,
 		0
 	)
 
@@ -377,17 +318,84 @@ local function AntiFall()
 
 	if result then
 
-		-- Evita que el personaje llegue al suelo
-		-- con una velocidad vertical peligrosa.
+		return (
+			HRP.Position -
+			result.Position
+		).Magnitude
+
+	end
+
+	return nil
+
+end
+
+------------------------------------------------------------
+-- ANTI-CAÍDA
+------------------------------------------------------------
+
+local function AntiFall()
+
+	if not HRP or not HRP.Parent then
+		return
+	end
+
+	if not Humanoid or not Humanoid.Parent then
+		return
+	end
+
+	local velocity =
+		HRP.AssemblyLinearVelocity
+
+	--------------------------------------------------------
+	-- DETECTAR SI ESTÁ CAYENDO
+	--------------------------------------------------------
+
+	if velocity.Y >= Config.fall_speed_threshold then
+		return
+	end
+
+	--------------------------------------------------------
+	-- RAYCAST PREDICTIVO
+	--------------------------------------------------------
+
+	RaycastParams.FilterDescendantsInstances = {
+		Character
+	}
+
+	local rayDistance = math.max(
+		Config.min_ray_length,
+		math.abs(velocity.Y) *
+		Config.prediction_time
+	)
+
+	local result = workspace:Raycast(
+		HRP.Position,
+		Vector3.new(
+			0,
+			-rayDistance,
+			0
+		),
+		RaycastParams
+	)
+
+	if result then
+
+		----------------------------------------------------
+		-- HAY SUELO DEBAJO
+		----------------------------------------------------
 
 		local currentVelocity =
 			HRP.AssemblyLinearVelocity
 
-		HRP.AssemblyLinearVelocity = Vector3.new(
-			currentVelocity.X,
-			0,
-			currentVelocity.Z
-		)
+		-- Cancelamos la velocidad vertical
+		-- antes del siguiente paso de física.
+
+		HRP.AssemblyLinearVelocity =
+			Vector3.new(
+				currentVelocity.X,
+				0,
+				currentVelocity.Z
+			)
 
 	end
 
@@ -404,7 +412,7 @@ local function SetupImmortality()
 	end
 
 	--------------------------------------------------------
-	-- DESACTIVAR ESTADO DEAD
+	-- DEAD DESACTIVADO
 	--------------------------------------------------------
 
 	Humanoid:SetStateEnabled(
@@ -413,7 +421,7 @@ local function SetupImmortality()
 	)
 
 	--------------------------------------------------------
-	-- OTROS ESTADOS PELIGROSOS
+	-- ESTADOS QUE PUEDEN PROVOCAR STUN
 	--------------------------------------------------------
 
 	Humanoid:SetStateEnabled(
@@ -437,25 +445,37 @@ local function SetupImmortality()
 	)
 
 	--------------------------------------------------------
-	-- HEALTH CHANGED
+	-- MOSTRAR VIDA REAL
 	--------------------------------------------------------
 
-	local HealthConnection = Humanoid.HealthChanged:Connect(
-		function(health)
+	Humanoid.HealthDisplayType =
+		Enum.HumanoidHealthDisplayType.DisplayWhenDamaged
 
-			if not Humanoid or not Humanoid.Parent then
-				return
+	--------------------------------------------------------
+	-- PROTECCIÓN INSTANTÁNEA
+	--------------------------------------------------------
+
+	local HealthConnection =
+		Humanoid.HealthChanged:Connect(
+			function(health)
+
+				if not Humanoid
+					or not Humanoid.Parent then
+					return
+				end
+
+				-- Si recibe cualquier daño,
+				-- se restaura inmediatamente.
+
+				if health < Humanoid.MaxHealth then
+
+					Humanoid.Health =
+						Humanoid.MaxHealth
+
+				end
+
 			end
-
-			if health < Humanoid.MaxHealth then
-
-				Humanoid.Health =
-					Humanoid.MaxHealth
-
-			end
-
-		end
-	)
+		)
 
 	table.insert(
 		CharacterConnections,
@@ -463,33 +483,123 @@ local function SetupImmortality()
 	)
 
 	--------------------------------------------------------
-	-- PROTECCIÓN CONTINUA
+	-- SEGUNDA CAPA DE SEGURIDAD
 	--------------------------------------------------------
 
 	task.spawn(function()
 
-		while Humanoid and Humanoid.Parent do
+		while Humanoid
+			and Humanoid.Parent do
 
-			if Humanoid.Health < Humanoid.MaxHealth then
+			if Humanoid.Health <
+				Humanoid.MaxHealth then
 
 				Humanoid.Health =
 					Humanoid.MaxHealth
 
 			end
 
+			------------------------------------------------
+			-- EVITAR PLATFORM STAND
+			------------------------------------------------
+
 			if Humanoid.PlatformStand then
 				Humanoid.PlatformStand = false
 			end
+
+			------------------------------------------------
+			-- EVITAR SIT
+			------------------------------------------------
 
 			if Humanoid.Sit then
 				Humanoid.Sit = false
 			end
 
-			task.wait(Config.health_check_interval)
+			task.wait(
+				Config.health_check_interval
+			)
 
 		end
 
 	end)
+
+end
+
+------------------------------------------------------------
+-- VOID RECOVERY
+------------------------------------------------------------
+
+local function RecoverFromVoid()
+
+	if not HRP or not HRP.Parent then
+		return
+	end
+
+	if IsVoiding then
+		return
+	end
+
+	IsVoiding = true
+
+	--------------------------------------------------------
+	-- DETENER FÍSICA
+	--------------------------------------------------------
+
+	HRP.AssemblyLinearVelocity =
+		Vector3.zero
+
+	HRP.AssemblyAngularVelocity =
+		Vector3.zero
+
+	--------------------------------------------------------
+	-- BUSCAR SPAWN
+	--------------------------------------------------------
+
+	local spawnLocation
+
+	for _, object in ipairs(
+		workspace:GetDescendants()
+	) do
+
+		if object:IsA("SpawnLocation") then
+
+			spawnLocation = object
+			break
+
+		end
+
+	end
+
+	--------------------------------------------------------
+	-- TELETRANSPORTAR
+	--------------------------------------------------------
+
+	if spawnLocation then
+
+		HRP.CFrame =
+			spawnLocation.CFrame
+			+ Vector3.new(0, 5, 0)
+
+	else
+
+		HRP.CFrame =
+			CFrame.new(0, 100, 0)
+
+	end
+
+	--------------------------------------------------------
+	-- LIMPIAR VELOCIDAD
+	--------------------------------------------------------
+
+	HRP.AssemblyLinearVelocity =
+		Vector3.zero
+
+	HRP.AssemblyAngularVelocity =
+		Vector3.zero
+
+	task.wait(0.1)
+
+	IsVoiding = false
 
 end
 
@@ -510,21 +620,23 @@ local function SetupCharacter(char)
 		char:WaitForChild("HumanoidRootPart")
 
 	--------------------------------------------------------
-	-- REINICIAR VARIABLES
+	-- RESET
 	--------------------------------------------------------
-
-	HRP.Anchored = false
 
 	AnchoredTime = 0
 	StunTime = 0
-
-	LastPos = HRP.Position
-	LastMoveTime = tick()
-
 	IsVoiding = false
 
+	LastPos =
+		HRP.Position
+
+	LastMoveTime =
+		tick()
+
+	HRP.Anchored = false
+
 	--------------------------------------------------------
-	-- COLLISION GROUP
+	-- COLLISION
 	--------------------------------------------------------
 
 	SetCollisionGroup(
@@ -533,7 +645,7 @@ local function SetupCharacter(char)
 	)
 
 	--------------------------------------------------------
-	-- PROPIEDADES FÍSICAS
+	-- FÍSICAS
 	--------------------------------------------------------
 
 	pcall(function()
@@ -556,12 +668,14 @@ local function SetupCharacter(char)
 end
 
 ------------------------------------------------------------
--- ANTI-FLING DE OTROS JUGADORES
+-- LIMPIAR ANTI-FLING
 ------------------------------------------------------------
 
-local function StopAntiFlingLoops()
+local function ClearAntiFling()
 
-	for _, connection in ipairs(HeartbeatLoops) do
+	for _, connection in ipairs(
+		AntiFlingConnections
+	) do
 
 		if connection then
 			connection:Disconnect()
@@ -569,15 +683,21 @@ local function StopAntiFlingLoops()
 
 	end
 
-	table.clear(HeartbeatLoops)
+	table.clear(AntiFlingConnections)
 
 end
 
+------------------------------------------------------------
+-- ANTI-FLING
+------------------------------------------------------------
+
 local function AntiFling()
 
-	StopAntiFlingLoops()
+	ClearAntiFling()
 
-	for _, v in ipairs(game:GetDescendants()) do
+	for _, v in ipairs(
+		workspace:GetDescendants()
+	) do
 
 		if not v then
 			continue
@@ -587,7 +707,7 @@ local function AntiFling()
 			continue
 		end
 
-		if v.Parent == Player.Character then
+		if v.Parent == Character then
 			continue
 		end
 
@@ -599,6 +719,10 @@ local function AntiFling()
 			continue
 		end
 
+		----------------------------------------------------
+		-- COLLISION GROUP
+		----------------------------------------------------
+
 		pcall(function()
 
 			v.CollisionGroup =
@@ -608,44 +732,50 @@ local function AntiFling()
 
 		end)
 
+		----------------------------------------------------
+		-- PROTECCIÓN CONTINUA
+		----------------------------------------------------
+
 		local connection
 
 		connection =
-			RunService.Heartbeat:Connect(function()
+			RunService.Heartbeat:Connect(
+				function()
 
-				if not v or not v.Parent then
+					if not v or not v.Parent then
 
-					if connection then
-						connection:Disconnect()
+						if connection then
+							connection:Disconnect()
+						end
+
+						return
+
 					end
 
-					return
+					pcall(function()
+
+						v.CustomPhysicalProperties =
+							PhysicalProperties.new(
+								0,
+								0,
+								0
+							)
+
+						v.AssemblyLinearVelocity =
+							Vector3.zero
+
+						v.AssemblyAngularVelocity =
+							Vector3.zero
+
+						v.CanCollide = false
+
+					end)
 
 				end
-
-				pcall(function()
-
-					v.CustomPhysicalProperties =
-						PhysicalProperties.new(
-							0,
-							0,
-							0
-						)
-
-					v.AssemblyLinearVelocity =
-						Vector3.zero
-
-					v.AssemblyAngularVelocity =
-						Vector3.zero
-
-					v.CanCollide = false
-
-				end)
-
-			end)
+			)
 
 		table.insert(
-			HeartbeatLoops,
+			AntiFlingConnections,
 			connection
 		)
 
@@ -654,51 +784,96 @@ local function AntiFling()
 end
 
 ------------------------------------------------------------
--- DETECCIÓN DE NUEVOS HUMANOIDROOTPART
+-- PERSONAJE NUEVO
 ------------------------------------------------------------
 
 table.insert(
 	GlobalConnections,
 
-	workspace.DescendantAdded:Connect(function(part)
+	Player.CharacterAdded:Connect(
+		function(newCharacter)
 
-		if not part:IsA("BasePart") then
-			return
-		end
+			task.wait(0.2)
 
-		if part.Name ~= "HumanoidRootPart" then
-			return
-		end
+			if newCharacter
+				and newCharacter.Parent then
 
-		if Character and part.Parent == Character then
-			return
-		end
+				SetupCharacter(
+					newCharacter
+				)
 
-		pcall(function()
-
-			part.CollisionGroup =
-				"AntiflingPlayers"
-
-			part.CanCollide = false
-
-		end)
-
-		task.delay(0.5, function()
-
-			if part and part.Parent then
-				AntiFling()
 			end
 
-		end)
+			task.delay(
+				0.5,
+				function()
 
-	end)
+					if newCharacter
+						and newCharacter.Parent then
+
+						AntiFling()
+
+					end
+
+				end
+			)
+
+		end
+	)
 )
 
 ------------------------------------------------------------
--- BUCLE PRINCIPAL DE FÍSICAS
+-- NUEVOS HUMANOIDROOTPART
+------------------------------------------------------------
+
+table.insert(
+	GlobalConnections,
+
+	workspace.DescendantAdded:Connect(
+		function(part)
+
+			if not part:IsA("BasePart") then
+				return
+			end
+
+			if part.Name ~=
+				"HumanoidRootPart" then
+				return
+			end
+
+			if Character
+				and part.Parent == Character then
+				return
+			end
+
+			pcall(function()
+
+				part.CollisionGroup =
+					"AntiflingPlayers"
+
+				part.CanCollide = false
+
+			end)
+
+			task.delay(
+				0.5,
+				function()
+
+					if part and part.Parent then
+						AntiFling()
+					end
+
+				end
+			)
+
+		end
+	)
+)
+
+------------------------------------------------------------
+-- BUCLE PRINCIPAL
 --
--- STEPPED:
--- se ejecuta antes del paso de simulación física.
+-- STEPPED = ANTES DE LA SIMULACIÓN DE FÍSICAS
 ------------------------------------------------------------
 
 table.insert(
@@ -722,75 +897,26 @@ table.insert(
 			end
 
 			------------------------------------------------
-			-- A. RECUPERACIÓN DEL VACÍO
+			-- 1. VACÍO
 			------------------------------------------------
 
-			local posY =
-				HRP.Position.Y
+			if HRP.Position.Y <
+				Config.void_height then
 
-			if posY <
-				(Config.void_height + Config.void_buffer) then
-
-				if not IsVoiding then
-
-					-- Recuperación inmediata.
-					--
-					-- Primero detenemos la física para
-					-- evitar que continúe cayendo.
-
-					HRP.AssemblyLinearVelocity =
-						Vector3.zero
-
-					HRP.AssemblyAngularVelocity =
-						Vector3.zero
-
-					-- Intentamos usar el SpawnLocation
-					-- como punto seguro.
-
-					local spawnLocation
-
-					for _, object in ipairs(
-						workspace:GetDescendants()
-					) do
-
-						if object:IsA("SpawnLocation") then
-
-							spawnLocation = object
-							break
-
-						end
-
-					end
-
-					if spawnLocation then
-
-						HRP.CFrame =
-							spawnLocation.CFrame
-							+ Vector3.new(0, 5, 0)
-
-					else
-
-						-- Punto de emergencia.
-
-						HRP.CFrame =
-							CFrame.new(0, 100, 0)
-
-					end
-
-				end
+				RecoverFromVoid()
 
 				return
 
 			end
 
 			------------------------------------------------
-			-- B. ANTI-CAÍDA POR RAYCAST
+			-- 2. ANTI-CAÍDA
 			------------------------------------------------
 
 			AntiFall()
 
 			------------------------------------------------
-			-- C. ANTI-ANCHOR
+			-- 3. ANTI-ANCHOR
 			------------------------------------------------
 
 			if HRP.Anchored then
@@ -817,11 +943,15 @@ table.insert(
 			end
 
 			------------------------------------------------
-			-- D. DETECCIÓN DE STUN
+			-- 4. VELOCIDAD
 			------------------------------------------------
 
 			local vel =
 				HRP.AssemblyLinearVelocity
+
+			------------------------------------------------
+			-- 5. DETECCIÓN DE STUN
+			------------------------------------------------
 
 			local moveDelta =
 				(HRP.Position - LastPos).Magnitude
@@ -849,7 +979,7 @@ table.insert(
 			end
 
 			------------------------------------------------
-			-- E. PERSONAJE INMOVILIZADO
+			-- 6. PERSONAJE ATASCADO
 			------------------------------------------------
 
 			if moveDelta < 0.1
@@ -859,27 +989,30 @@ table.insert(
 
 					BreakStun()
 
-					LastMoveTime = tick()
+					LastMoveTime =
+						tick()
 
 				end
 
 			else
 
-				LastMoveTime = tick()
+				LastMoveTime =
+					tick()
 
 			end
 
-			LastPos = HRP.Position
+			LastPos =
+				HRP.Position
 
 			------------------------------------------------
-			-- F. ANULAR ROTACIÓN
+			-- 7. ROTACIÓN
 			------------------------------------------------
 
 			HRP.AssemblyAngularVelocity =
 				Vector3.zero
 
 			------------------------------------------------
-			-- G. PROTECCIÓN CONTRA VELOCIDAD EXTREMA
+			-- 8. VELOCIDAD EXTREMA
 			------------------------------------------------
 
 			if vel.Magnitude >
@@ -891,7 +1024,7 @@ table.insert(
 			end
 
 			------------------------------------------------
-			-- H. ANTI-FLING POR PROXIMIDAD
+			-- 9. ANTI-FLING DE JUGADORES CERCANOS
 			------------------------------------------------
 
 			for _, plr in ipairs(
@@ -909,11 +1042,14 @@ table.insert(
 					if OtherHRP then
 
 						local Dist =
-							(HRP.Position -
-								OtherHRP.Position).Magnitude
+							(
+								HRP.Position -
+								OtherHRP.Position
+							).Magnitude
 
 						local OtherVel =
-							OtherHRP.AssemblyLinearVelocity.Magnitude
+							OtherHRP.AssemblyLinearVelocity
+							.Magnitude
 
 						if Dist <
 							Config.anchor_dist
@@ -951,43 +1087,7 @@ table.insert(
 )
 
 ------------------------------------------------------------
--- CHARACTER ADDED
-------------------------------------------------------------
-
-table.insert(
-	GlobalConnections,
-
-	Player.CharacterAdded:Connect(
-		function(newChar)
-
-			task.wait(0.2)
-
-			if newChar and newChar.Parent then
-				SetupCharacter(newChar)
-			end
-
-			-- Reiniciar AntiFling después del respawn.
-
-			task.delay(
-				0.5,
-				function()
-
-					if newChar
-						and newChar.Parent then
-
-						AntiFling()
-
-					end
-
-				end
-			)
-
-		end
-	)
-)
-
-------------------------------------------------------------
--- CONFIGURAR PERSONAJE ACTUAL
+-- PERSONAJE ACTUAL
 ------------------------------------------------------------
 
 if Player.Character then
@@ -999,7 +1099,7 @@ if Player.Character then
 end
 
 ------------------------------------------------------------
--- ESPERAR A QUE EL JUEGO ESTÉ COMPLETAMENTE CARGADO
+-- ESPERAR CARGA COMPLETA
 ------------------------------------------------------------
 
 task.spawn(function()
@@ -1012,8 +1112,9 @@ task.spawn(function()
 
 	end
 
-	task.wait(2)
+	task.wait(1)
 
 	AntiFling()
 
 end)
+```
