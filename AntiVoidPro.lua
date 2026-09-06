@@ -1,3 +1,4 @@
+```lua
 ------------------------------------------------------------
 -- SYS://IMMORTAL
 -- CLIENT ONLY
@@ -1024,3 +1025,4 @@ task.spawn(function()
 	AntiFling()
 
 end)
+```
