@@ -1,4 +1,3 @@
-```lua
 ------------------------------------------------------------
 -- SYS://IMMORTAL
 -- CLIENT ONLY
@@ -29,13 +28,13 @@ local Config = {
 	StunlockThreshold = 30,
 	StunlockTime = 0.20,
 
-	-- Anti caída
-	FallSpeedThreshold = -10,
+	-- Anti caída (Velocidad a la que empieza a escanear)
+	FallSpeedThreshold = -15,
 
-	-- Raycast mínimo
-	MinRayLength = 30,
+	-- Raycast mínimo (Evita fallos por FPS altos/bajos)
+	MinRayLength = 25,
 
-	-- Predicción
+	-- Predicción (Segundos de anticipación al impacto)
 	PredictionTime = 0.35,
 
 	-- Vacío
@@ -311,7 +310,7 @@ RayParams.FilterType =
 RayParams.IgnoreWater = true
 
 ------------------------------------------------------------
--- ANTI CAÍDA
+-- ANTI CAÍDA (MEJORADO CON RAYCAST DINÁMICO)
 ------------------------------------------------------------
 
 local function AntiFall()
@@ -330,7 +329,7 @@ local function AntiFall()
 		HRP.AssemblyLinearVelocity
 
 	--------------------------------------------------------
-	-- NO ESTÁ CAYENDO
+	-- NO ESTÁ CAYENDO LO SUFICIENTE
 	--------------------------------------------------------
 
 	if Velocity.Y >=
@@ -349,7 +348,7 @@ local function AntiFall()
 	}
 
 	--------------------------------------------------------
-	-- CALCULAR DISTANCIA
+	-- CALCULAR DISTANCIA DINÁMICA
 	--------------------------------------------------------
 
 	local RayLength = math.max(
@@ -375,7 +374,7 @@ local function AntiFall()
 	if Result then
 
 		----------------------------------------------------
-		-- SUELO DETECTADO
+		-- SUELO DETECTADO A TIEMPO: FRENAR CAÍDA
 		----------------------------------------------------
 
 		local CurrentVelocity =
@@ -393,7 +392,7 @@ local function AntiFall()
 end
 
 ------------------------------------------------------------
--- INMORTALIDAD
+-- INMORTALIDAD (MEJORADA PARA REACCIONAR A VIDA == 0)
 ------------------------------------------------------------
 
 local function SetupImmortality()
@@ -403,50 +402,22 @@ local function SetupImmortality()
 	end
 
 	--------------------------------------------------------
-	-- DESACTIVAR DEAD
+	-- DESACTIVAR DEAD Y ESTADOS DE RAGDOLL
 	--------------------------------------------------------
 
-	Humanoid:SetStateEnabled(
-		Enum.HumanoidStateType.Dead,
-		false
-	)
-
-	--------------------------------------------------------
-	-- DESACTIVAR ESTADOS DE RAGDOLL/STUN
-	--------------------------------------------------------
-
-	Humanoid:SetStateEnabled(
-		Enum.HumanoidStateType.FallingDown,
-		false
-	)
-
-	Humanoid:SetStateEnabled(
-		Enum.HumanoidStateType.Ragdoll,
-		false
-	)
-
-	Humanoid:SetStateEnabled(
-		Enum.HumanoidStateType.PlatformStanding,
-		false
-	)
-
-	Humanoid:SetStateEnabled(
-		Enum.HumanoidStateType.Seated,
-		false
-	)
-
-	--------------------------------------------------------
-	-- VIDA REAL
-	--
-	-- NO SE CREA UNA VIDA FALSA.
-	-- ROBLOX SIGUE MOSTRANDO Humanoid.Health.
-	--------------------------------------------------------
+	pcall(function()
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+		Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+	end)
 
 	Humanoid.HealthDisplayType =
 		Enum.HumanoidHealthDisplayType.DisplayWhenDamaged
 
 	--------------------------------------------------------
-	-- RECUPERACIÓN INMEDIATA
+	-- RECUPERACIÓN INMEDIATA (INCLUYE CASO < MAXHEALTH INCLUYENDO 0)
 	--------------------------------------------------------
 
 	local HealthConnection =
@@ -487,10 +458,6 @@ local function RecoverFromVoid()
 		return
 	end
 
-	--------------------------------------------------------
-	-- BUSCAR SPAWN
-	--------------------------------------------------------
-
 	local SpawnLocation = nil
 
 	for _, Object in ipairs(
@@ -506,19 +473,11 @@ local function RecoverFromVoid()
 
 	end
 
-	--------------------------------------------------------
-	-- DETENER FÍSICA
-	--------------------------------------------------------
-
 	HRP.AssemblyLinearVelocity =
 		Vector3.zero
 
 	HRP.AssemblyAngularVelocity =
 		Vector3.zero
-
-	--------------------------------------------------------
-	-- TELETRANSPORTAR
-	--------------------------------------------------------
 
 	if SpawnLocation then
 
@@ -532,10 +491,6 @@ local function RecoverFromVoid()
 			CFrame.new(0, 100, 0)
 
 	end
-
-	--------------------------------------------------------
-	-- LIMPIAR VELOCIDAD
-	--------------------------------------------------------
 
 	HRP.AssemblyLinearVelocity =
 		Vector3.zero
@@ -565,10 +520,6 @@ local function SetupCharacter(NewCharacter)
 			"HumanoidRootPart"
 		)
 
-	--------------------------------------------------------
-	-- RESET
-	--------------------------------------------------------
-
 	AnchoredTime = 0
 	StunTime = 0
 
@@ -580,15 +531,7 @@ local function SetupCharacter(NewCharacter)
 
 	HRP.Anchored = false
 
-	--------------------------------------------------------
-	-- COLLISION
-	--------------------------------------------------------
-
 	SetCharacterCollisionGroup()
-
-	--------------------------------------------------------
-	-- PROPIEDADES FÍSICAS
-	--------------------------------------------------------
 
 	pcall(function()
 
@@ -600,10 +543,6 @@ local function SetupCharacter(NewCharacter)
 			)
 
 	end)
-
-	--------------------------------------------------------
-	-- INMORTALIDAD
-	--------------------------------------------------------
 
 	SetupImmortality()
 
@@ -638,10 +577,6 @@ local function AntiFling()
 			continue
 		end
 
-		----------------------------------------------------
-		-- COLLISION
-		----------------------------------------------------
-
 		pcall(function()
 
 			Object.CollisionGroup =
@@ -650,10 +585,6 @@ local function AntiFling()
 			Object.CanCollide = false
 
 		end)
-
-		----------------------------------------------------
-		-- CONTROL DE VELOCIDAD
-		----------------------------------------------------
 
 		local Connection
 
@@ -792,9 +723,6 @@ RunService.Stepped:Connect(
 		-- 1. VIDA
 		----------------------------------------------------
 
-		-- Segunda capa de protección.
-		-- HealthChanged es la primera.
-
 		if Humanoid.Health <
 			Humanoid.MaxHealth then
 
@@ -824,7 +752,7 @@ RunService.Stepped:Connect(
 		end
 
 		----------------------------------------------------
-		-- 4. ANTI CAÍDA
+		-- 4. ANTI CAÍDA (ACTIVO)
 		----------------------------------------------------
 
 		AntiFall()
@@ -1020,9 +948,8 @@ task.spawn(function()
 
 	end
 
-	task.wait(1)
+	task.task = task.wait(1)
 
 	AntiFling()
 
 end)
-```
